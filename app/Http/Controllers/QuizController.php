@@ -7,23 +7,17 @@ use Inertia\Inertia;
 
 class QuizController extends Controller
 {
-    // GET /module/{moduleId}/quiz - Show quiz interface
+    // GET /module/{moduleId}/quiz - Show quiz overview page
     public function show($moduleId)
     {
         $module = $this->getModuleData($moduleId);
-
-        if (!$module) {
-            return redirect()->back()->with('error', 'Module not found');
-        }
-
         $quiz = $this->getQuizData($moduleId);
         $userAttempts = $this->getUserAttempts($moduleId);
 
-        // Fixed: Use correct component path - match your file structure
         return Inertia::render('Quiz/Show', [
             'module' => $module,
             'quiz' => $quiz,
-            'userAttempts' => $userAttempts,
+            'userAttempts' => $userAttempts
         ]);
     }
 
@@ -31,26 +25,19 @@ class QuizController extends Controller
     public function start(Request $request, $moduleId)
     {
         $module = $this->getModuleData($moduleId);
-
-        if (!$module) {
-            return redirect()->back()->with('error', 'Module not found');
-        }
-
         $questions = $this->getQuizQuestions($moduleId);
 
         // Create quiz session
         $quizSession = [
             'session_id' => uniqid('quiz_'),
             'module_id' => $moduleId,
-            'started_at' => now()->toDateTimeString(),
+            'started_at' => now(),
             'time_limit' => $questions['time_limit'],
             'total_questions' => count($questions['questions'])
         ];
 
-        // Store session
-        $request->session()->put('quiz_session', $quizSession);
+        session(['quiz_session' => $quizSession]);
 
-        // Fixed: Return Inertia response instead of mixed response
         return Inertia::render('Quiz/Interface', [
             'module' => $module,
             'questions' => $questions['questions'],
@@ -62,78 +49,81 @@ class QuizController extends Controller
         ]);
     }
 
-    // POST /module/{moduleId}/quiz/submit - Submit quiz answers
+    // POST /module/{moduleId}/quiz/submit - Submit answers
     public function submit(Request $request, $moduleId)
     {
-        try {
-            $request->validate([
-                'session_id' => 'required|string',
-                'answers' => 'required|array',
-                'time_taken' => 'required|integer'
-            ]);
+        $request->validate([
+            'session_id' => 'required|string',
+            'answers' => 'required|array',
+            'time_taken' => 'required|integer'
+        ]);
 
-            // Check if quiz session exists
-            $quizSession = $request->session()->get('quiz_session');
-            if (!$quizSession || $quizSession['session_id'] !== $request->input('session_id')) {
-                return redirect()->back()->with('error', 'Invalid quiz session');
-            }
+        $answers = $request->input('answers');
+        $timeTaken = $request->input('time_taken');
 
-            $module = $this->getModuleData($moduleId);
-            if (!$module) {
-                return redirect()->back()->with('error', 'Module not found');
-            }
+        // Get correct answers
+        $questions = $this->getQuizQuestions($moduleId);
+        $correctAnswers = collect($questions['questions'])->pluck('correct_answer', 'id')->toArray();
 
-            $answers = $request->input('answers');
-            $timeTaken = $request->input('time_taken');
+        // Calculate score
+        $result = $this->calculateScore($answers, $correctAnswers);
 
-            // Get correct answers
-            $questions = $this->getQuizQuestions($moduleId);
-            $correctAnswers = collect($questions['questions'])->pluck('correct_answer', 'id')->toArray();
+        // Save submission (dummy - nanti ke DB)
+        $submission = [
+            'module_id' => $moduleId,
+            'user_id' => auth()->id(),
+            'answers' => $answers,
+            'score' => $result['score'],
+            'correct_count' => $result['correct_count'],
+            'total_questions' => $result['total_questions'],
+            'time_taken' => $timeTaken,
+            'submitted_at' => now()
+        ];
 
-            // Calculate score
-            $result = $this->calculateScore($answers, $correctAnswers);
+        // Simpan ke session agar bisa diakses di result()
+        session([
+            'quiz_submission' => $submission,
+            'quiz_result' => $result,
+            'quiz_questions_review' => $this->getQuestionsWithAnswers($moduleId, $answers)
+        ]);
 
-            // Save result
-            $submission = [
-                'module_id' => $moduleId,
-                'user_id' => auth()->id(),
-                'answers' => $answers,
-                'score' => $result['score'],
-                'correct_count' => $result['correct_count'],
-                'total_questions' => $result['total_questions'],
-                'time_taken' => $timeTaken,
-                'submitted_at' => now()->toDateTimeString()
-            ];
+        // Hapus session quiz aktif
+        session()->forget('quiz_session');
 
-            // Clear quiz session
-            $request->session()->forget('quiz_session');
-
-            // Fixed: Return Inertia response for result page
-            return Inertia::render('Quiz/Result', [
-                'module' => $module,
-                'result' => $result,
-                'submission' => $submission,
-                'questions_review' => $this->getQuestionsWithAnswers($moduleId, $answers)
-            ]);
-
-        } catch (\Exception $e) {
-            \Log::error('Quiz submission error: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Something went wrong while submitting quiz');
-        }
+        // Redirect ke halaman result
+        return Inertia::location(route('quiz.result', $moduleId));
     }
 
-    // Private methods untuk data dummy
+    // GET /module/{moduleId}/quiz/result - Show result page
+    public function result($moduleId)
+    {
+        $module = $this->getModuleData($moduleId);
+
+        $submission = session('quiz_submission');
+        $result = session('quiz_result');
+        $questionsReview = session('quiz_questions_review');
+
+        if (!$submission || !$result) {
+            return redirect()->route('quiz.show', $moduleId)
+                ->with('error', 'Belum ada hasil quiz. Silakan kerjakan terlebih dahulu.');
+        }
+
+        return Inertia::render('Quiz/Result', [
+            'module' => $module,
+            'result' => $result,
+            'submission' => $submission,
+            'questions_review' => $questionsReview,
+        ]);
+    }
+
+    // ------------------------------
+    // Helper data dummy
     private function getModuleData($moduleId)
     {
         $modules = [
             1 => ['id' => 1, 'title' => 'Pengenalan Pemrograman', 'color' => 'bg-blue-500'],
             2 => ['id' => 2, 'title' => 'Looping & Perulangan', 'color' => 'bg-green-500'],
             3 => ['id' => 3, 'title' => 'Fungsi & Prosedur', 'color' => 'bg-purple-500'],
-            4 => ['id' => 4, 'title' => 'Array & String', 'color' => 'bg-orange-500'],
-            5 => ['id' => 5, 'title' => 'Pointer & Memory', 'color' => 'bg-red-500'],
-            6 => ['id' => 6, 'title' => 'Struktur Data', 'color' => 'bg-indigo-500'],
-            7 => ['id' => 7, 'title' => 'File Processing', 'color' => 'bg-pink-500'],
-            8 => ['id' => 8, 'title' => 'Project Akhir', 'color' => 'bg-yellow-500']
         ];
 
         return $modules[$moduleId] ?? null;
@@ -141,13 +131,11 @@ class QuizController extends Controller
 
     private function getQuizData($moduleId)
     {
-        $module = $this->getModuleData($moduleId);
-
         return [
-            'title' => "Quiz " . ($module['title'] ?? 'Unknown Module'),
+            'title' => "Quiz " . $this->getModuleData($moduleId)['title'],
             'description' => 'Uji pemahaman Anda dengan 10 soal pilihan ganda',
             'total_questions' => 10,
-            'time_limit' => 30, // minutes
+            'time_limit' => 30,
             'max_attempts' => 3,
             'points_per_question' => 10
         ];
@@ -155,7 +143,6 @@ class QuizController extends Controller
 
     private function getUserAttempts($moduleId)
     {
-        // Dummy data - nanti dari database
         return [
             'attempts_used' => 1,
             'max_attempts' => 3,
@@ -204,6 +191,7 @@ class QuizController extends Controller
                         ],
                         'correct_answer' => 'B'
                     ],
+                    // Tambah 7 soal lagi untuk total 10
                     [
                         'id' => 4,
                         'question' => 'Variabel dalam pemrograman digunakan untuk?',
@@ -397,9 +385,28 @@ class QuizController extends Controller
                         'correct_answer' => 'A'
                     ]
                 ]
+            ],
+            // Untuk modul lain, bisa ditambahkan nanti dengan pattern yang sama
+            3 => [ // Dummy untuk modul 3
+                'time_limit' => 30,
+                'questions' => [
+                    [
+                        'id' => 1,
+                        'question' => 'Apa yang dimaksud dengan fungsi dalam pemrograman?',
+                        'options' => [
+                            'A' => 'Kumpulan statement yang dapat dipanggil',
+                            'B' => 'Variabel global',
+                            'C' => 'Syntax error',
+                            'D' => 'Hardware komputer'
+                        ],
+                        'correct_answer' => 'A'
+                    ],
+                    // ... tambah 9 soal lagi
+                ]
             ]
         ];
 
+        // Return soal untuk modul yang diminta, atau soal default jika belum dibuat
         return $questionsData[$moduleId] ?? [
             'time_limit' => 30,
             'questions' => [
@@ -423,8 +430,8 @@ class QuizController extends Controller
         $correctCount = 0;
         $totalQuestions = count($correctAnswers);
 
-        foreach ($correctAnswers as $questionId => $correctAnswer) {
-            if (isset($userAnswers[$questionId]) && $userAnswers[$questionId] === $correctAnswer) {
+        foreach ($correctAnswers as $qId => $correctAnswer) {
+            if (isset($userAnswers[$qId]) && $userAnswers[$qId] === $correctAnswer) {
                 $correctCount++;
             }
         }
@@ -453,15 +460,19 @@ class QuizController extends Controller
     {
         $questions = $this->getQuizQuestions($moduleId)['questions'];
 
-        return collect($questions)->map(function ($question) use ($userAnswers) {
+        return collect($questions)->map(function ($q) use ($userAnswers) {
+            $qid = strval($q['id']);
+            $userAnswer = $userAnswers[$qid] ?? null;
+            $isCorrect = $userAnswer === $q['correct_answer'];
+
             return [
-                'id' => $question['id'],
-                'question' => $question['question'],
-                'options' => $question['options'],
-                'correct_answer' => $question['correct_answer'],
-                'user_answer' => $userAnswers[$question['id']] ?? null,
-                'is_correct' => ($userAnswers[$question['id']] ?? null) === $question['correct_answer']
+                'id' => $q['id'],
+                'question' => $q['question'],
+                'options' => $q['options'],
+                'correct_answer' => $q['correct_answer'],
+                'user_answer' => $userAnswer,
+                'is_correct' => $isCorrect
             ];
-        });
+        })->toArray();
     }
 }

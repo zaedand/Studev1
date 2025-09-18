@@ -1,7 +1,8 @@
 import { PlaceholderPattern } from '@/components/ui/placeholder-pattern';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, Link } from '@inertiajs/react';
+import { PageProps as InertiaPageProps } from '@inertiajs/core';
+import { Head, Link, usePage } from '@inertiajs/react';
 import {
     BookOpen,
     Trophy,
@@ -15,6 +16,15 @@ import {
     Award
 } from 'lucide-react';
 
+interface PageProps extends InertiaPageProps {
+    auth: {
+      user: {
+        id: number;
+        name: string;
+        email: string;
+      } | null;
+    };
+}
 const breadcrumbs: BreadcrumbItem[] = [
     {
         title: 'Dashboard',
@@ -116,6 +126,7 @@ const userStats = {
 };
 
 export default function Dashboard() {
+    const { auth } = usePage().props;
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Dashboard" />
@@ -125,7 +136,7 @@ export default function Dashboard() {
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-700 p-6 rounded-xl">
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                            Selamat Datang di Learning Hub! 🎓
+                            Selamat Datang di StuDev - { auth.user.name } !🎓
                         </h1>
                         <p className="text-gray-600 dark:text-gray-300 mt-1">
                             Lanjutkan perjalanan belajar programming Anda

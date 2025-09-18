@@ -4,7 +4,7 @@ import { NavUser } from '@/components/nav-user';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/react';
-import { BookOpen, Code, Folder, House, LayoutGrid, Trophy } from 'lucide-react';
+import { BookOpen, Code, FilePenLine, Folder, GraduationCap, House, LayoutGrid, Trophy } from 'lucide-react';
 import AppLogo from './app-logo';
 
 const mainNavItems: NavItem[] = [
@@ -12,6 +12,11 @@ const mainNavItems: NavItem[] = [
         title: 'Dashboard',
         href: '/dashboard',
         icon: House,
+    },
+    {
+        title: 'Instructor',
+        href: '/insdashboard',
+        icon: GraduationCap,
     },
     {
         title: 'Leaderboard',
@@ -22,6 +27,16 @@ const mainNavItems: NavItem[] = [
         title: 'Compiler',
         href: '/compiler',
         icon: Code,
+    },
+    {
+        title: 'Quiz',
+        href: '/quiz-manage',
+        icon: FilePenLine,
+    },
+    {
+        title: 'Praktikum',
+        href: '/praktikum-manage',
+        icon: FilePenLine,
     },
 ];
 

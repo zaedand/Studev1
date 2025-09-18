@@ -32,7 +32,7 @@ interface QuizInterfaceProps {
     };
     questions: Question[];
     quizConfig: {
-        time_limit: number;
+        time_limit: number; // minutes
         total_questions: number;
         session_id: string;
     };
@@ -46,15 +46,16 @@ const breadcrumbs: BreadcrumbItem[] = [
 export default function Interface({ module, questions, quizConfig }: QuizInterfaceProps) {
     const [currentQuestion, setCurrentQuestion] = useState(0);
     const [answers, setAnswers] = useState<Record<number, string>>({});
-    const [timeLeft, setTimeLeft] = useState(quizConfig.time_limit * 60);
+    const [timeLeft, setTimeLeft] = useState(quizConfig.time_limit * 60); // Convert to seconds
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
 
+    // Timer effect
     useEffect(() => {
         const timer = setInterval(() => {
             setTimeLeft((prev) => {
                 if (prev <= 1) {
-                    handleSubmit(true);
+                    handleSubmit(true); // Auto submit when time is up
                     return 0;
                 }
                 return prev - 1;
@@ -64,17 +65,15 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
         return () => clearInterval(timer);
     }, []);
 
+    // Prevent browser back/refresh
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            if (!isSubmitting) {
-                e.preventDefault();
-                e.returnValue = '';
-            }
+            e.preventDefault();
+            e.returnValue = '';
         };
 
-        const handlePopState = (e: PopStateEvent) => {
+        const handlePopState = () => {
             if (!isSubmitting) {
-                e.preventDefault();
                 alert('Quiz sedang berlangsung! Gunakan tombol submit untuk menyelesaikan quiz.');
                 history.pushState(null, '', location.href);
             }
@@ -83,6 +82,7 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
         window.addEventListener('beforeunload', handleBeforeUnload);
         window.addEventListener('popstate', handlePopState);
 
+        // Push initial state to prevent back
         history.pushState(null, '', location.href);
 
         return () => {
@@ -116,21 +116,24 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
 
         const timeTaken = (quizConfig.time_limit * 60) - timeLeft;
 
-        // Use Inertia post with proper error handling
-        router.post(`/module/${module.id}/quiz/submit`, {
-            session_id: quizConfig.session_id,
-            answers: answers,
-            time_taken: timeTaken
-        }, {
-            onError: (errors) => {
-                console.error('Quiz submission failed:', errors);
-                setIsSubmitting(false);
-                alert('Gagal mengirim jawaban. Silakan coba lagi.');
+        router.post(`/module/${module.id}/quiz/submit`,
+            {
+                session_id: quizConfig.session_id,
+                answers,
+                time_taken: timeTaken,
             },
-            onSuccess: () => {
-                // Submission successful, page will redirect automatically
+            {
+                preserveState: false, // biar ganti halaman penuh
+                onSuccess: () => {
+                router.visit(`/module/${module.id}/quiz/result`);
+                },
+                onError: (errors) => {
+                console.error("Submit error:", errors);
+                setIsSubmitting(false);
+                },
             }
-        });
+            );
+
     };
 
     const confirmSubmit = () => {
@@ -147,9 +150,9 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
     };
 
     const getTimeLeftColor = () => {
-        if (timeLeft > 300) return 'text-green-600';
-        if (timeLeft > 60) return 'text-yellow-600';
-        return 'text-red-600';
+        if (timeLeft > 300) return 'text-green-600'; // > 5 minutes
+        if (timeLeft > 60) return 'text-yellow-600';  // > 1 minute
+        return 'text-red-600'; // < 1 minute
     };
 
     const currentQ = questions[currentQuestion];
@@ -177,6 +180,7 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
                         </div>
 
                         <div className="flex items-center gap-6">
+                            {/* Progress */}
                             <div className="text-center">
                                 <p className="text-sm text-gray-600 dark:text-gray-400">Dijawab</p>
                                 <p className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -184,6 +188,7 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
                                 </p>
                             </div>
 
+                            {/* Timer */}
                             <div className="flex items-center gap-2">
                                 <Clock className={`h-5 w-5 ${getTimeLeftColor()}`} />
                                 <span className={`text-xl font-bold ${getTimeLeftColor()}`}>
@@ -191,6 +196,7 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
                                 </span>
                             </div>
 
+                            {/* Submit Button */}
                             <button
                                 onClick={() => handleSubmit()}
                                 disabled={isSubmitting}
@@ -201,6 +207,7 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
                         </div>
                     </div>
 
+                    {/* Progress Bar */}
                     <div className="mt-4">
                         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                             <div

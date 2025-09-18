@@ -54,6 +54,9 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function Result({ module, result, submission, questions_review }: QuizResultProps) {
+    // Debug logging
+    console.log('Quiz Result Props:', { module, result, submission, questions_review });
+
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
@@ -78,8 +81,29 @@ export default function Result({ module, result, submission, questions_review }:
         return { message: "Tetap semangat belajar!", emoji: "💪" };
     };
 
-    const scoreMessage = getScoreMessage(result.score);
-    const pointsEarned = result.correct_count * 10; // 10 points per correct answer
+    const scoreMessage = getScoreMessage(result?.score || 0);
+    const pointsEarned = (result?.correct_count || 0) * 10; // 10 points per correct answer
+
+    // Safety checks
+    if (!module || !result || !submission) {
+        return (
+            <AppLayout breadcrumbs={breadcrumbs}>
+                <Head title="Quiz Error" />
+                <div className="max-w-4xl mx-auto p-6">
+                    <div className="text-center">
+                        <h1 className="text-2xl font-bold text-red-600 mb-4">Error Loading Quiz Result</h1>
+                        <p className="text-gray-600 mb-4">Terjadi masalah saat memuat hasil quiz.</p>
+                        <Link
+                            href="/dashboard"
+                            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg"
+                        >
+                            Kembali ke Dashboard
+                        </Link>
+                    </div>
+                </div>
+            </AppLayout>
+        );
+    }
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -105,13 +129,13 @@ export default function Result({ module, result, submission, questions_review }:
                 <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-700 rounded-xl p-8 mb-8">
                     <div className="text-center mb-6">
                         <div className="inline-flex items-center gap-3 mb-4">
-                            <div className={`px-6 py-3 rounded-full ${getGradeColor(result.grade)} font-bold text-2xl`}>
-                                Grade {result.grade}
+                            <div className={`px-6 py-3 rounded-full ${getGradeColor(result.grade || 'F')} font-bold text-2xl`}>
+                                Grade {result.grade || 'F'}
                             </div>
                         </div>
 
                         <div className="text-6xl font-bold text-gray-900 dark:text-white mb-2">
-                            {result.score}
+                            {result.score || 0}
                         </div>
                         <p className="text-xl text-gray-600 dark:text-gray-300">
                             dari 100 poin
@@ -123,7 +147,7 @@ export default function Result({ module, result, submission, questions_review }:
                         <div className="bg-white dark:bg-gray-800 p-4 rounded-lg text-center">
                             <CheckCircle className="h-6 w-6 text-green-500 mx-auto mb-2" />
                             <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                                {result.correct_count}
+                                {result.correct_count || 0}
                             </p>
                             <p className="text-sm text-gray-600 dark:text-gray-400">Benar</p>
                         </div>
@@ -131,7 +155,7 @@ export default function Result({ module, result, submission, questions_review }:
                         <div className="bg-white dark:bg-gray-800 p-4 rounded-lg text-center">
                             <XCircle className="h-6 w-6 text-red-500 mx-auto mb-2" />
                             <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                                {result.total_questions - result.correct_count}
+                                {(result.total_questions || 0) - (result.correct_count || 0)}
                             </p>
                             <p className="text-sm text-gray-600 dark:text-gray-400">Salah</p>
                         </div>
@@ -139,7 +163,7 @@ export default function Result({ module, result, submission, questions_review }:
                         <div className="bg-white dark:bg-gray-800 p-4 rounded-lg text-center">
                             <Clock className="h-6 w-6 text-blue-500 mx-auto mb-2" />
                             <p className="text-sm font-bold text-gray-900 dark:text-white">
-                                {formatTime(submission.time_taken)}
+                                {formatTime(submission.time_taken || 0)}
                             </p>
                             <p className="text-sm text-gray-600 dark:text-gray-400">Waktu</p>
                         </div>
@@ -164,31 +188,31 @@ export default function Result({ module, result, submission, questions_review }:
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="text-center">
                             <div className="text-3xl mb-2">
-                                {result.percentage >= 80 ? '🎯' : result.percentage >= 60 ? '📊' : '📈'}
+                                {(result.percentage || 0) >= 80 ? '🎯' : (result.percentage || 0) >= 60 ? '📊' : '📈'}
                             </div>
                             <p className="font-semibold text-gray-900 dark:text-white">Akurasi</p>
                             <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                                {result.percentage}%
+                                {result.percentage || 0}%
                             </p>
                         </div>
 
                         <div className="text-center">
                             <div className="text-3xl mb-2">
-                                {submission.time_taken < 1200 ? '⚡' : submission.time_taken < 1800 ? '⏱️' : '🐌'}
+                                {(submission.time_taken || 0) < 1200 ? '⚡' : (submission.time_taken || 0) < 1800 ? '⏱️' : '🐌'}
                             </div>
                             <p className="font-semibold text-gray-900 dark:text-white">Kecepatan</p>
                             <p className="text-sm text-gray-600 dark:text-gray-400">
-                                {(submission.time_taken / result.total_questions).toFixed(0)} detik/soal
+                                {result.total_questions > 0 ? ((submission.time_taken || 0) / result.total_questions).toFixed(0) : 0} detik/soal
                             </p>
                         </div>
 
                         <div className="text-center">
                             <div className="text-3xl mb-2">
-                                {result.grade === 'A' ? '🏆' : result.grade === 'B' ? '🥈' : result.grade === 'C' ? '🥉' : '📚'}
+                                {(result.grade || 'F') === 'A' ? '🏆' : (result.grade || 'F') === 'B' ? '🥈' : (result.grade || 'F') === 'C' ? '🥉' : '📚'}
                             </div>
                             <p className="font-semibold text-gray-900 dark:text-white">Grade</p>
                             <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                                {result.grade}
+                                {result.grade || 'F'}
                             </p>
                         </div>
                     </div>
@@ -202,7 +226,7 @@ export default function Result({ module, result, submission, questions_review }:
                     </h3>
 
                     <div className="space-y-4 max-h-96 overflow-y-auto">
-                        {questions_review.map((question, index) => (
+                        {(questions_review || []).map((question, index) => (
                             <div
                                 key={question.id}
                                 className={`
@@ -238,7 +262,7 @@ export default function Result({ module, result, submission, questions_review }:
                                                         : 'text-gray-500 dark:text-gray-400'
                                                 }`}>
                                                     {question.user_answer ?
-                                                        `${question.user_answer}. ${question.options[question.user_answer]}` :
+                                                        `${question.user_answer}. ${question.options?.[question.user_answer] || 'Unknown'}` :
                                                         'Tidak dijawab'
                                                     }
                                                 </span>
@@ -248,7 +272,7 @@ export default function Result({ module, result, submission, questions_review }:
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-gray-600 dark:text-gray-400">Jawaban Benar:</span>
                                                     <span className="font-semibold text-green-600 dark:text-green-400">
-                                                        {question.correct_answer}. {question.options[question.correct_answer]}
+                                                        {question.correct_answer}. {question.options?.[question.correct_answer] || 'Unknown'}
                                                     </span>
                                                 </div>
                                             )}
@@ -265,6 +289,15 @@ export default function Result({ module, result, submission, questions_review }:
                                 </div>
                             </div>
                         ))}
+
+                        {/* Show message if no questions */}
+                        {(!questions_review || questions_review.length === 0) && (
+                            <div className="text-center py-8">
+                                <p className="text-gray-500 dark:text-gray-400">
+                                    Tidak ada data review soal yang tersedia.
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -276,7 +309,7 @@ export default function Result({ module, result, submission, questions_review }:
                     </h3>
 
                     <div className="space-y-3">
-                        {result.score >= 80 ? (
+                        {(result.score || 0) >= 80 ? (
                             <div className="flex items-start gap-3">
                                 <Award className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
                                 <div>
@@ -286,7 +319,7 @@ export default function Result({ module, result, submission, questions_review }:
                                     </p>
                                 </div>
                             </div>
-                        ) : result.score >= 60 ? (
+                        ) : (result.score || 0) >= 60 ? (
                             <div className="flex items-start gap-3">
                                 <TrendingUp className="h-5 w-5 text-yellow-500 mt-0.5 flex-shrink-0" />
                                 <div>
@@ -353,7 +386,7 @@ export default function Result({ module, result, submission, questions_review }:
                     <div className="inline-flex items-center gap-2 bg-gray-100 dark:bg-gray-800 px-4 py-2 rounded-full">
                         <Clock className="h-4 w-4 text-gray-600 dark:text-gray-400" />
                         <span className="text-sm text-gray-600 dark:text-gray-400">
-                            Quiz diselesaikan pada {new Date(submission.submitted_at).toLocaleString('id-ID')}
+                            Quiz diselesaikan pada {submission.submitted_at ? new Date(submission.submitted_at).toLocaleString('id-ID') : 'Unknown time'}
                         </span>
                     </div>
                 </div>
