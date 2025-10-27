@@ -15,7 +15,7 @@ const mainNavItems: NavItem[] = [
     },
     {
         title: 'Instructor',
-        href: '/insdashboard',
+        href: '/instructor/dashboard',
         icon: GraduationCap,
     },
     {
@@ -30,12 +30,12 @@ const mainNavItems: NavItem[] = [
     },
     {
         title: 'Quiz',
-        href: '/quiz-manage',
+        href: '/instructor/quiz-manage',
         icon: FilePenLine,
     },
     {
         title: 'Praktikum',
-        href: '/praktikum-manage',
+        href: '/instructor/praktikum-manage',
         icon: FilePenLine,
     },
 ];

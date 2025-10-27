@@ -2,21 +2,53 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Module;
+use App\Models\Quiz;
+use App\Models\QuizAttempt;
+use App\Models\QuizQuestion;
+use App\Services\ProgressService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class QuizController extends Controller
 {
+    protected $progressService;
+
+    public function __construct(ProgressService $progressService)
+    {
+        $this->progressService = $progressService;
+    }
+
     // GET /module/{moduleId}/quiz - Show quiz overview page
     public function show($moduleId)
     {
-        $module = $this->getModuleData($moduleId);
-        $quiz = $this->getQuizData($moduleId);
-        $userAttempts = $this->getUserAttempts($moduleId);
+        $module = Module::with(['quizzes.questions'])->findOrFail($moduleId);
+        $quiz = $module->quizzes->first(); // Assuming one quiz per module for now
+
+        if (!$quiz) {
+            return redirect()->route('student.modules.show', $moduleId)
+                ->with('error', 'Quiz belum tersedia untuk modul ini.');
+        }
+
+        $userAttempts = $this->getUserAttempts($quiz->id);
 
         return Inertia::render('Quiz/Show', [
-            'module' => $module,
-            'quiz' => $quiz,
+            'module' => [
+                'id' => $module->id,
+                'title' => $module->title,
+                'color' => 'bg-blue-500' // You can add color field to modules table
+            ],
+            'quiz' => [
+                'id' => $quiz->id,
+                'title' => $quiz->title,
+                'description' => $quiz->description,
+                'total_questions' => $quiz->total_questions,
+                'time_limit' => 10, // You can add this field to quizzes table
+                'max_attempts' => 3, // You can add this field to quizzes table
+                'points_per_question' => $quiz->point_per_question
+            ],
             'userAttempts' => $userAttempts
         ]);
     }
@@ -24,26 +56,58 @@ class QuizController extends Controller
     // POST /module/{moduleId}/quiz/start - Start quiz session
     public function start(Request $request, $moduleId)
     {
-        $module = $this->getModuleData($moduleId);
-        $questions = $this->getQuizQuestions($moduleId);
+        $module = Module::findOrFail($moduleId);
+        $quiz = $module->quizzes->first();
+
+        if (!$quiz) {
+            return redirect()->route('student.modules.show', $moduleId)
+                ->with('error', 'Quiz belum tersedia untuk modul ini.');
+        }
+
+        // Check if user has already attempted this quiz
+        $existingAttempt = QuizAttempt::where('user_id', Auth::id())
+            ->where('quiz_id', $quiz->id)
+            ->first();
+
+        if ($existingAttempt) {
+            return redirect()->route('quiz.result', $moduleId)
+                ->with('info', 'Anda sudah menyelesaikan quiz ini.');
+        }
+
+        $questions = $quiz->questions()
+            ->ordered()
+            ->get()
+            ->map(function ($question) {
+                return [
+                    'id' => $question->id,
+                    'question' => $question->question,
+                    'options' => $question->options,
+                    // Don't include correct_answer for security
+                ];
+            });
 
         // Create quiz session
         $quizSession = [
             'session_id' => uniqid('quiz_'),
+            'quiz_id' => $quiz->id,
             'module_id' => $moduleId,
             'started_at' => now(),
-            'time_limit' => $questions['time_limit'],
-            'total_questions' => count($questions['questions'])
+            'time_limit' => 30, // You can get this from quiz or module
+            'total_questions' => $questions->count()
         ];
 
         session(['quiz_session' => $quizSession]);
 
         return Inertia::render('Quiz/Interface', [
-            'module' => $module,
-            'questions' => $questions['questions'],
+            'module' => [
+                'id' => $module->id,
+                'title' => $module->title,
+                'color' => 'bg-blue-500'
+            ],
+            'questions' => $questions,
             'quizConfig' => [
-                'time_limit' => $questions['time_limit'],
-                'total_questions' => count($questions['questions']),
+                'time_limit' => $quizSession['time_limit'],
+                'total_questions' => $questions->count(),
                 'session_id' => $quizSession['session_id']
             ]
         ]);
@@ -58,385 +122,164 @@ class QuizController extends Controller
             'time_taken' => 'required|integer'
         ]);
 
+        $quizSession = session('quiz_session');
+
+        if (!$quizSession || $quizSession['session_id'] !== $request->session_id) {
+            return redirect()->route('quiz.show', $moduleId)
+                ->with('error', 'Session quiz tidak valid. Silakan mulai ulang.');
+        }
+
+        $quiz = Quiz::with('questions')->findOrFail($quizSession['quiz_id']);
         $answers = $request->input('answers');
         $timeTaken = $request->input('time_taken');
 
-        // Get correct answers
-        $questions = $this->getQuizQuestions($moduleId);
-        $correctAnswers = collect($questions['questions'])->pluck('correct_answer', 'id')->toArray();
+        // Check if user has already attempted this quiz
+        $existingAttempt = QuizAttempt::where('user_id', Auth::id())
+            ->where('quiz_id', $quiz->id)
+            ->first();
+
+        if ($existingAttempt) {
+            return redirect()->route('quiz.result', $moduleId)
+                ->with('info', 'Anda sudah menyelesaikan quiz ini.');
+        }
 
         // Calculate score
-        $result = $this->calculateScore($answers, $correctAnswers);
+        $result = $this->calculateScore($answers, $quiz->questions);
+        $pointsEarned = $result['correct_count'] * $quiz->point_per_question;
 
-        // Save submission (dummy - nanti ke DB)
-        $submission = [
-            'module_id' => $moduleId,
-            'user_id' => auth()->id(),
-            'answers' => $answers,
-            'score' => $result['score'],
-            'correct_count' => $result['correct_count'],
-            'total_questions' => $result['total_questions'],
-            'time_taken' => $timeTaken,
-            'submitted_at' => now()
-        ];
+        // Save to database
+        DB::transaction(function () use ($quiz, $answers, $result, $pointsEarned, $timeTaken) {
+            // Create quiz attempt
+            $attempt = QuizAttempt::create([
+                'user_id' => Auth::id(),
+                'quiz_id' => $quiz->id,
+                'answers' => $answers,
+                'score' => $result['correct_count'],
+                'points_earned' => $pointsEarned,
+                'completed_at' => now(),
+            ]);
 
-        // Simpan ke session agar bisa diakses di result()
+            // Add points to user
+            Auth::user()->addPoints($pointsEarned);
+        });
+
+        // Store result in session for display
         session([
-            'quiz_submission' => $submission,
-            'quiz_result' => $result,
-            'quiz_questions_review' => $this->getQuestionsWithAnswers($moduleId, $answers)
+            'quiz_submission' => [
+                'quiz_id' => $quiz->id,
+                'user_id' => Auth::id(),
+                'answers' => $answers,
+                'score' => $result['correct_count'],
+                'correct_count' => $result['correct_count'],
+                'total_questions' => $result['total_questions'],
+                'time_taken' => $timeTaken,
+                'points_earned' => $pointsEarned,
+                'submitted_at' => now()
+            ],
+            'quiz_result' => array_merge($result, ['points_earned' => $pointsEarned]),
+            'quiz_questions_review' => $this->getQuestionsWithAnswers($quiz, $answers)
         ]);
 
-        // Hapus session quiz aktif
+        // Remove quiz session
         session()->forget('quiz_session');
 
-        // Redirect ke halaman result
         return Inertia::location(route('quiz.result', $moduleId));
     }
 
     // GET /module/{moduleId}/quiz/result - Show result page
     public function result($moduleId)
     {
-        $module = $this->getModuleData($moduleId);
+        $module = Module::findOrFail($moduleId);
 
+        // Try to get from session first (for just completed quiz)
         $submission = session('quiz_submission');
         $result = session('quiz_result');
         $questionsReview = session('quiz_questions_review');
 
+        // If not in session, get from database (for previous attempts)
         if (!$submission || !$result) {
-            return redirect()->route('quiz.show', $moduleId)
-                ->with('error', 'Belum ada hasil quiz. Silakan kerjakan terlebih dahulu.');
+            $quiz = $module->quizzes->first();
+            if (!$quiz) {
+                return redirect()->route('student.modules.show', $moduleId)
+                    ->with('error', 'Quiz tidak ditemukan.');
+            }
+
+            $attempt = QuizAttempt::where('user_id', Auth::id())
+                ->where('quiz_id', $quiz->id)
+                ->latest()
+                ->first();
+
+            if (!$attempt) {
+                return redirect()->route('quiz.show', $moduleId)
+                    ->with('error', 'Belum ada hasil quiz. Silakan kerjakan terlebih dahulu.');
+            }
+
+            $submission = [
+                'quiz_id' => $attempt->quiz_id,
+                'user_id' => $attempt->user_id,
+                'answers' => $attempt->answers,
+                'score' => $attempt->score,
+                'correct_count' => $attempt->score,
+                'total_questions' => $quiz->total_questions,
+                'points_earned' => $attempt->points_earned,
+                'submitted_at' => $attempt->completed_at
+            ];
+
+            $result = [
+                'score' => round(($attempt->score / $quiz->total_questions) * 100),
+                'correct_count' => $attempt->score,
+                'total_questions' => $quiz->total_questions,
+                'percentage' => round(($attempt->score / $quiz->total_questions) * 100),
+                'points_earned' => $attempt->points_earned,
+                'grade' => $this->getGrade(round(($attempt->score / $quiz->total_questions) * 100))
+            ];
+
+            $questionsReview = $this->getQuestionsWithAnswers($quiz, $attempt->answers);
         }
 
         return Inertia::render('Quiz/Result', [
-            'module' => $module,
+            'module' => [
+                'id' => $module->id,
+                'title' => $module->title,
+                'color' => 'bg-blue-500'
+            ],
             'result' => $result,
             'submission' => $submission,
             'questions_review' => $questionsReview,
         ]);
     }
 
-    // ------------------------------
-    // Helper data dummy
-    private function getModuleData($moduleId)
+    // Helper methods
+    private function getUserAttempts($quizId)
     {
-        $modules = [
-            1 => ['id' => 1, 'title' => 'Pengenalan Pemrograman', 'color' => 'bg-blue-500'],
-            2 => ['id' => 2, 'title' => 'Looping & Perulangan', 'color' => 'bg-green-500'],
-            3 => ['id' => 3, 'title' => 'Fungsi & Prosedur', 'color' => 'bg-purple-500'],
-        ];
+        $attempts = QuizAttempt::where('user_id', Auth::id())
+            ->where('quiz_id', $quizId)
+            ->get();
 
-        return $modules[$moduleId] ?? null;
-    }
+        $bestScore = $attempts->max('score');
+        $lastAttempt = $attempts->sortByDesc('completed_at')->first();
 
-    private function getQuizData($moduleId)
-    {
         return [
-            'title' => "Quiz " . $this->getModuleData($moduleId)['title'],
-            'description' => 'Uji pemahaman Anda dengan 10 soal pilihan ganda',
-            'total_questions' => 10,
-            'time_limit' => 30,
-            'max_attempts' => 3,
-            'points_per_question' => 10
+            'attempts_used' => $attempts->count(),
+            'max_attempts' => 3, // You can add this to quiz table
+            'best_score' => $bestScore ? round(($bestScore / 10) * 100) : 0, // Assuming 10 questions
+            'last_attempt_date' => $lastAttempt ? $lastAttempt->completed_at->format('Y-m-d H:i:s') : null
         ];
     }
 
-    private function getUserAttempts($moduleId)
-    {
-        return [
-            'attempts_used' => 1,
-            'max_attempts' => 3,
-            'best_score' => 80,
-            'last_attempt_date' => '2025-09-10 14:30:00'
-        ];
-    }
-
-    private function getQuizQuestions($moduleId)
-    {
-        // Data soal berbeda per modul
-        $questionsData = [
-            1 => [ // Pengenalan Pemrograman
-                'time_limit' => 30,
-                'questions' => [
-                    [
-                        'id' => 1,
-                        'question' => 'Apa yang dimaksud dengan algoritma dalam pemrograman?',
-                        'options' => [
-                            'A' => 'Bahasa pemrograman yang digunakan',
-                            'B' => 'Langkah-langkah sistematis untuk menyelesaikan masalah',
-                            'C' => 'Software untuk membuat program',
-                            'D' => 'Hardware komputer yang digunakan'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'id' => 2,
-                        'question' => 'Manakah yang merupakan struktur data dasar?',
-                        'options' => [
-                            'A' => 'HTML',
-                            'B' => 'CSS',
-                            'C' => 'Array',
-                            'D' => 'JavaScript'
-                        ],
-                        'correct_answer' => 'C'
-                    ],
-                    [
-                        'id' => 3,
-                        'question' => 'Apa fungsi dari compiler?',
-                        'options' => [
-                            'A' => 'Menjalankan program',
-                            'B' => 'Menerjemahkan kode sumber ke kode mesin',
-                            'C' => 'Mendesain interface',
-                            'D' => 'Menyimpan data'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    // Tambah 7 soal lagi untuk total 10
-                    [
-                        'id' => 4,
-                        'question' => 'Variabel dalam pemrograman digunakan untuk?',
-                        'options' => [
-                            'A' => 'Menyimpan nilai atau data',
-                            'B' => 'Menjalankan program',
-                            'C' => 'Membuat tampilan',
-                            'D' => 'Mengatur hardware'
-                        ],
-                        'correct_answer' => 'A'
-                    ],
-                    [
-                        'id' => 5,
-                        'question' => 'Apa yang dimaksud dengan syntax error?',
-                        'options' => [
-                            'A' => 'Error dalam logic program',
-                            'B' => 'Error karena salah penulisan kode',
-                            'C' => 'Error karena hardware rusak',
-                            'D' => 'Error karena internet lambat'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'id' => 6,
-                        'question' => 'Flowchart digunakan untuk?',
-                        'options' => [
-                            'A' => 'Membuat database',
-                            'B' => 'Menggambar alur program',
-                            'C' => 'Mendesain tampilan',
-                            'D' => 'Mengatur network'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'id' => 7,
-                        'question' => 'Pseudocode adalah?',
-                        'options' => [
-                            'A' => 'Bahasa pemrograman baru',
-                            'B' => 'Kode palsu atau virus',
-                            'C' => 'Penulisan algoritma dengan bahasa manusia',
-                            'D' => 'Software development tool'
-                        ],
-                        'correct_answer' => 'C'
-                    ],
-                    [
-                        'id' => 8,
-                        'question' => 'IDE singkatan dari?',
-                        'options' => [
-                            'A' => 'Internet Development Environment',
-                            'B' => 'Integrated Development Environment',
-                            'C' => 'Internal Database Engine',
-                            'D' => 'Interactive Design Editor'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'id' => 9,
-                        'question' => 'Manakah yang bukan termasuk tipe data dasar?',
-                        'options' => [
-                            'A' => 'Integer',
-                            'B' => 'String',
-                            'C' => 'Boolean',
-                            'D' => 'HTML'
-                        ],
-                        'correct_answer' => 'D'
-                    ],
-                    [
-                        'id' => 10,
-                        'question' => 'Debugging adalah proses untuk?',
-                        'options' => [
-                            'A' => 'Membuat program baru',
-                            'B' => 'Mencari dan memperbaiki error',
-                            'C' => 'Menginstall software',
-                            'D' => 'Mendesain interface'
-                        ],
-                        'correct_answer' => 'B'
-                    ]
-                ]
-            ],
-            2 => [ // Looping & Perulangan
-                'time_limit' => 30,
-                'questions' => [
-                    [
-                        'id' => 1,
-                        'question' => 'Manakah yang merupakan jenis loop dalam pemrograman?',
-                        'options' => [
-                            'A' => 'for, while, do-while',
-                            'B' => 'if, else, switch',
-                            'C' => 'int, char, float',
-                            'D' => 'class, object, method'
-                        ],
-                        'correct_answer' => 'A'
-                    ],
-                    [
-                        'id' => 2,
-                        'question' => 'Kapan while loop akan berhenti?',
-                        'options' => [
-                            'A' => 'Ketika kondisi true',
-                            'B' => 'Ketika kondisi false',
-                            'C' => 'Setelah 10 kali iterasi',
-                            'D' => 'Tidak pernah berhenti'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'id' => 3,
-                        'question' => 'Perbedaan utama while dan do-while loop?',
-                        'options' => [
-                            'A' => 'Tidak ada perbedaan',
-                            'B' => 'do-while lebih cepat',
-                            'C' => 'do-while minimal dieksekusi sekali',
-                            'D' => 'while untuk angka, do-while untuk string'
-                        ],
-                        'correct_answer' => 'C'
-                    ],
-                    [
-                        'id' => 4,
-                        'question' => 'For loop biasanya digunakan untuk?',
-                        'options' => [
-                            'A' => 'Iterasi dengan jumlah yang sudah diketahui',
-                            'B' => 'Kondisi yang tidak pasti',
-                            'C' => 'Input dari user',
-                            'D' => 'Koneksi database'
-                        ],
-                        'correct_answer' => 'A'
-                    ],
-                    [
-                        'id' => 5,
-                        'question' => 'Apa fungsi statement "break" dalam loop?',
-                        'options' => [
-                            'A' => 'Melanjutkan iterasi berikutnya',
-                            'B' => 'Menghentikan loop sepenuhnya',
-                            'C' => 'Mengulang dari awal',
-                            'D' => 'Tidak ada fungsi'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'id' => 6,
-                        'question' => 'Apa fungsi statement "continue" dalam loop?',
-                        'options' => [
-                            'A' => 'Menghentikan loop',
-                            'B' => 'Mengulang dari awal',
-                            'C' => 'Melompat ke iterasi berikutnya',
-                            'D' => 'Keluar dari program'
-                        ],
-                        'correct_answer' => 'C'
-                    ],
-                    [
-                        'id' => 7,
-                        'question' => 'Nested loop adalah?',
-                        'options' => [
-                            'A' => 'Loop yang error',
-                            'B' => 'Loop di dalam loop',
-                            'C' => 'Loop yang sangat cepat',
-                            'D' => 'Loop tanpa kondisi'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'id' => 8,
-                        'question' => 'Infinite loop terjadi ketika?',
-                        'options' => [
-                            'A' => 'Kondisi loop selalu true',
-                            'B' => 'Kondisi loop selalu false',
-                            'C' => 'Loop terlalu cepat',
-                            'D' => 'Komputer terlalu lambat'
-                        ],
-                        'correct_answer' => 'A'
-                    ],
-                    [
-                        'id' => 9,
-                        'question' => 'Manakah syntax for loop yang benar dalam C++?',
-                        'options' => [
-                            'A' => 'for i = 1 to 10',
-                            'B' => 'for (int i=1; i<=10; i++)',
-                            'C' => 'for i in range(10)',
-                            'D' => 'for each i in array'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'id' => 10,
-                        'question' => 'Loop counter adalah?',
-                        'options' => [
-                            'A' => 'Variabel yang menghitung iterasi',
-                            'B' => 'Fungsi untuk menghentikan loop',
-                            'C' => 'Error dalam loop',
-                            'D' => 'Hardware komputer'
-                        ],
-                        'correct_answer' => 'A'
-                    ]
-                ]
-            ],
-            // Untuk modul lain, bisa ditambahkan nanti dengan pattern yang sama
-            3 => [ // Dummy untuk modul 3
-                'time_limit' => 30,
-                'questions' => [
-                    [
-                        'id' => 1,
-                        'question' => 'Apa yang dimaksud dengan fungsi dalam pemrograman?',
-                        'options' => [
-                            'A' => 'Kumpulan statement yang dapat dipanggil',
-                            'B' => 'Variabel global',
-                            'C' => 'Syntax error',
-                            'D' => 'Hardware komputer'
-                        ],
-                        'correct_answer' => 'A'
-                    ],
-                    // ... tambah 9 soal lagi
-                ]
-            ]
-        ];
-
-        // Return soal untuk modul yang diminta, atau soal default jika belum dibuat
-        return $questionsData[$moduleId] ?? [
-            'time_limit' => 30,
-            'questions' => [
-                [
-                    'id' => 1,
-                    'question' => 'Soal untuk modul ' . $moduleId . ' belum tersedia. Ini adalah soal dummy.',
-                    'options' => [
-                        'A' => 'Opsi A',
-                        'B' => 'Opsi B',
-                        'C' => 'Opsi C',
-                        'D' => 'Opsi D'
-                    ],
-                    'correct_answer' => 'A'
-                ]
-            ]
-        ];
-    }
-
-    private function calculateScore($userAnswers, $correctAnswers)
+    private function calculateScore($userAnswers, $questions)
     {
         $correctCount = 0;
-        $totalQuestions = count($correctAnswers);
+        $totalQuestions = $questions->count();
 
-        foreach ($correctAnswers as $qId => $correctAnswer) {
-            if (isset($userAnswers[$qId]) && $userAnswers[$qId] === $correctAnswer) {
+        foreach ($questions as $question) {
+            $questionId = (string) $question->id;
+            if (isset($userAnswers[$questionId]) && $userAnswers[$questionId] === $question->correct_answer) {
                 $correctCount++;
             }
         }
 
-        $score = round(($correctCount / $totalQuestions) * 100);
+        $score = $totalQuestions > 0 ? round(($correctCount / $totalQuestions) * 100) : 0;
 
         return [
             'score' => $score,
@@ -456,20 +299,18 @@ class QuizController extends Controller
         return 'F';
     }
 
-    private function getQuestionsWithAnswers($moduleId, $userAnswers)
+    private function getQuestionsWithAnswers($quiz, $userAnswers)
     {
-        $questions = $this->getQuizQuestions($moduleId)['questions'];
-
-        return collect($questions)->map(function ($q) use ($userAnswers) {
-            $qid = strval($q['id']);
-            $userAnswer = $userAnswers[$qid] ?? null;
-            $isCorrect = $userAnswer === $q['correct_answer'];
+        return $quiz->questions->map(function ($question) use ($userAnswers) {
+            $questionId = (string) $question->id;
+            $userAnswer = $userAnswers[$questionId] ?? null;
+            $isCorrect = $userAnswer === $question->correct_answer;
 
             return [
-                'id' => $q['id'],
-                'question' => $q['question'],
-                'options' => $q['options'],
-                'correct_answer' => $q['correct_answer'],
+                'id' => $question->id,
+                'question' => $question->question,
+                'options' => $question->options,
+                'correct_answer' => $question->correct_answer,
                 'user_answer' => $userAnswer,
                 'is_correct' => $isCorrect
             ];

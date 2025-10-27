@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Notifikasi Browser</title>
+</head>
+<body>
+  <h2>Contoh Notifikasi</h2>
+  <button id="notifyBtn">Tampilkan Notifikasi</button>
+
+<script>
+  console.log("Script dimuat");
+
+  const button = document.getElementById("notifyBtn");
+  console.log("Button ditemukan:", !!button);
+
+  button.addEventListener("click", async () => {
+    console.log("Tombol diklik");
+
+    if (!("Notification" in window)) {
+      alert("Browser tidak mendukung notifikasi.");
+      return;
+    }
+
+    console.log("Permission sekarang:", Notification.permission);
+    let permission = Notification.permission;
+    if (permission !== "granted") {
+      permission = await Notification.requestPermission();
+      console.log("Permission hasil request:", permission);
+    }
+
+    if (permission === "granted") {
+      console.log("Membuat notifikasi...");
+      const notif = new Notification("Tes Notifikasi", {
+        body: "Jika kamu membaca ini, berarti berhasil.",
+        icon: "https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg"
+      });
+      notif.onclick = () => console.log("Notifikasi diklik");
+      notif.onerror = err => console.error("Error notifikasi:", err);
+    } else {
+      console.warn("Notifikasi ditolak atau belum diizinkan");
+    }
+  });
+</script>
+
+</body>
+</html>
