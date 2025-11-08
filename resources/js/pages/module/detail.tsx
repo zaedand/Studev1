@@ -88,6 +88,7 @@ interface MateriContent extends ContentSection {
 }
 
 interface PengayaanContent extends ContentSection {
+    id?: number;
     videos: Video[];
     links: Link[];
 }
@@ -221,37 +222,61 @@ export default function ModuleDetail() {
         showPraktikumModal: false,
         selectedFile: null as File | null,
         uploadProgress: 0,
+        // Tambahkan state untuk tracking completed items
+        completedVideos: moduleContent.pengayaan.videos
+            .filter((v: Video) => v.watched)
+            .map((v: Video) => v.id),
+        completedLinks: moduleContent.pengayaan.links
+            .filter((l: Link) => l.completed)
+            .map((l: Link) => l.id),
     });
 
+    const enrichmentId = moduleData?.enrichment_id ?? moduleData?.id;
+
     // Memoized handlers
-    const handleEnrichmentComplete = useCallback(async (enrichmentId: number) => {
-        if (state.loading) return;
+const handleEnrichmentComplete = useCallback(async (itemId: number, itemType: 'video' | 'link', moduleId: number) => {
+    if (state.loading) return;
 
-        setState(prev => ({ ...prev, loading: true }));
+    setState(prev => ({ ...prev, loading: true }));
 
-        router.post(
-            `/enrichments/${enrichmentId}/complete`,
-            {},
-            {
-                preserveScroll: true,
-                onSuccess: (page) => {
-                    const response = page.props.flash as any;
-                    if (response?.success) {
-                        setState(prev => ({ ...prev, userPoints: response.total_points }));
-                        alert(response.message || 'Selamat! Anda mendapat poin fire!');
-                    }
-                    router.reload({ only: ['moduleContent'] });
-                },
-                onError: (errors) => {
-                    console.error('Error:', errors);
-                    alert('Terjadi kesalahan. Silakan coba lagi.');
-                },
-                onFinish: () => {
-                    setState(prev => ({ ...prev, loading: false }));
+    router.post(
+        `/enrichments/${itemId}/complete`,
+        {
+            type: itemType,
+            module_id: moduleId,
+        },
+        {
+            preserveScroll: true,
+            onSuccess: (page) => {
+                const response = page.props.flash as any;
+                if (response?.success) {
+                    setState(prev => ({
+                        ...prev,
+                        userPoints: response.total_points || prev.userPoints,
+                        completedVideos:
+                            itemType === 'video'
+                                ? [...prev.completedVideos, itemId]
+                                : prev.completedVideos,
+                        completedLinks:
+                            itemType === 'link'
+                                ? [...prev.completedLinks, itemId]
+                                : prev.completedLinks,
+                    }));
                 }
+                // Reload untuk update progress di header
+                router.reload({ only: ['moduleData', 'moduleContent'] });
+            },
+            onError: (errors) => {
+                console.error('Error:', errors);
+                alert('Terjadi kesalahan. Silakan coba lagi.');
+            },
+            onFinish: () => {
+                setState(prev => ({ ...prev, loading: false }));
             }
-        );
-    }, [state.loading]);
+        }
+    );
+}, [state.loading]);
+
 
     const handleUploadAssignment = useCallback(async () => {
         if (!state.selectedFile) {
@@ -876,9 +901,9 @@ export default function ModuleDetail() {
                                                             Tonton Video
                                                         </a>
 
-                                                        {!video.watched && (
+                                                        {!state.completedVideos.includes(video.id) && (
                                                             <button
-                                                                onClick={() => handleEnrichmentComplete(video.id)}
+                                                                onClick={() => handleEnrichmentComplete(video.id, 'video', moduleContent.pengayaan.id || moduleData.id)}
                                                                 disabled={state.loading}
                                                                 className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg text-sm transition-colors"
                                                             >
@@ -893,7 +918,7 @@ export default function ModuleDetail() {
                                                             </button>
                                                         )}
 
-                                                        {video.watched && (
+                                                        {state.completedVideos.includes(video.id) && (
                                                             <div className="flex items-center gap-2 text-green-600 dark:text-green-400 px-4 py-2">
                                                                 <CheckCircle className="h-4 w-4" />
                                                                 <span className="text-sm font-medium">Selesai</span>
@@ -946,9 +971,9 @@ export default function ModuleDetail() {
                                                         Buka Link
                                                     </a>
 
-                                                    {!link.completed && link.id && (
+                                                    {!state.completedLinks.includes(link.id!) && link.id && (
                                                         <button
-                                                            onClick={() => handleEnrichmentComplete(link.id!)}
+                                                            onClick={() => handleEnrichmentComplete(link.id!, 'link', moduleContent.pengayaan.id || moduleData.id)}
                                                             disabled={state.loading}
                                                             className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg text-sm transition-colors"
                                                         >
@@ -963,7 +988,7 @@ export default function ModuleDetail() {
                                                         </button>
                                                     )}
 
-                                                    {link.completed && (
+                                                    {state.completedLinks.includes(link.id!) && (
                                                         <div className="flex items-center gap-2 text-green-600 dark:text-green-400 px-4 py-2">
                                                             <CheckCircle className="h-4 w-4" />
                                                             <span className="text-sm font-medium">Selesai</span>

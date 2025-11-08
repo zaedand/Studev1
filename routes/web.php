@@ -66,7 +66,8 @@ Route::middleware(['auth'])->group(function () {
 
     // Enrichment routes
     Route::get('/enrichments/{enrichment}', [EnrichmentController::class, 'show'])->name('enrichments.show');
-    Route::post('/enrichments/{enrichment}/complete', [EnrichmentController::class, 'markCompleted'])->name('enrichments.complete');
+    Route::post('/enrichments/{enrichment}/complete', [EnrichmentController::class, 'markCompleted'])
+    ->name('enrichments.complete');
 
     // Assignment routes
     Route::get('/assignments/{assignment}', [AssignmentController::class, 'show'])->name('assignments.show');

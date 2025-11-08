@@ -4,188 +4,188 @@ namespace App\Http\Controllers\Student;
 
 use App\Http\Controllers\Controller;
 use App\Models\Enrichment;
+use App\Models\Module;
 use App\Models\UserEnrichment;
+use App\Models\UserProgress;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
+use Illuminate\Support\Facades\Log;
 
 class EnrichmentController extends Controller
 {
-    /**
-     * Tampilkan detail pengayaan
-     */
-    public function show($enrichmentId)
+    public function markCompleted(Request $request, $enrichmentItemId)
     {
-        $enrichment = Enrichment::with(['module', 'videos', 'links'])
-            ->findOrFail($enrichmentId);
+        $user = auth()->user();
 
-        $userEnrichment = UserEnrichment::where('user_id', auth()->id())
-            ->where('enrichment_id', $enrichmentId)
+        $request->validate([
+            'type' => 'required|in:video,link',
+            'module_id' => 'required|exists:modules,id',
+        ]);
+
+        $type = $request->input('type');
+        $moduleId = $request->input('module_id');
+
+        // Cari item enrichment
+        $enrichmentItem = Enrichment::where('id', $enrichmentItemId)
+            ->where('module_id', $moduleId)
+            ->where('type', $type)
             ->first();
 
-        $watchedVideos = $userEnrichment?->watched_videos ?? [];
+        if (!$enrichmentItem) {
+            return back()->with([
+                'flash' => [
+                    'error' => true,
+                    'message' => 'Item enrichment tidak ditemukan.',
+                ]
+            ]);
+        }
 
-        $breadcrumbs = [
-            ['label' => 'Dashboard', 'href' => route('dashboard')],
-            ['label' => 'Modul', 'href' => route('modules.index')],
-            ['label' => $enrichment->module->title, 'href' => route('modules.show', $enrichment->module_id)],
-            ['label' => 'Pengayaan', 'href' => '#'],
-        ];
+        $reward = (int) $enrichmentItem->point_reward;
 
-        $enrichmentData = [
-            'id' => $enrichment->id,
-            'title' => $enrichment->title,
-            'description' => $enrichment->description,
-            'points' => $enrichment->point_reward,
-            'completed' => $userEnrichment?->completed ?? false,
-            'completedAt' => $userEnrichment?->completed_at,
-            'module' => [
-                'id' => $enrichment->module->id,
-                'title' => $enrichment->module->title,
-                'color' => $enrichment->module->color,
-            ],
-            'videos' => $enrichment->videos->map(function ($video) use ($watchedVideos) {
-                return [
-                    'id' => $video->id,
-                    'title' => $video->title,
-                    'platform' => $video->platform,
-                    'duration' => $video->duration,
-                    'url' => $video->url,
-                    'thumbnail' => $video->thumbnail_url,
-                    'watched' => in_array($video->id, $watchedVideos),
-                    'order' => $video->order,
-                ];
-            })->sortBy('order')->values(),
-            'links' => $enrichment->links->map(function ($link) {
-                return [
-                    'id' => $link->id,
-                    'title' => $link->title,
-                    'url' => $link->url,
-                    'type' => $link->type,
-                    'description' => $link->description,
-                    'order' => $link->order,
-                ];
-            })->sortBy('order')->values(),
-        ];
-
-        return Inertia::render('Enrichment/Show', [
-            'enrichment' => $enrichmentData,
-            'breadcrumbs' => $breadcrumbs,
-        ]);
-    }
-
-    /**
-     * Tandai video sebagai telah ditonton
-     */
-    public function markVideoWatched(Request $request, $enrichmentId)
-    {
-        $request->validate([
-            'video_id' => 'required|exists:enrichment_videos,id',
-        ]);
-
+        // Buat atau ambil record user enrichment
         $userEnrichment = UserEnrichment::firstOrCreate(
             [
-                'user_id' => auth()->id(),
-                'enrichment_id' => $enrichmentId,
+                'user_id' => $user->id,
+                'module_id' => $moduleId,
             ],
             [
                 'watched_videos' => [],
+                'completed_links' => [],
                 'completed' => false,
             ]
         );
 
-        $watchedVideos = $userEnrichment->watched_videos ?? [];
+        // Pastikan data array tidak null
+        $watchedVideos = is_array($userEnrichment->watched_videos)
+            ? $userEnrichment->watched_videos
+            : [];
 
-        if (!in_array($request->video_id, $watchedVideos)) {
-            $watchedVideos[] = $request->video_id;
+        $completedLinks = is_array($userEnrichment->completed_links)
+            ? $userEnrichment->completed_links
+            : [];
+
+        // Update berdasarkan tipe
+        if ($type === 'video') {
+            // Cek duplikasi dengan cara yang aman
+            $alreadyWatched = false;
+            foreach ($watchedVideos as $video) {
+                $videoId = is_array($video) ? ($video['id'] ?? null) : $video;
+                if ($videoId == $enrichmentItemId) {
+                    $alreadyWatched = true;
+                    break;
+                }
+            }
+
+            if ($alreadyWatched) {
+                return back()->with([
+                    'flash' => [
+                        'info' => true,
+                        'message' => 'Video ini sudah ditandai selesai sebelumnya.',
+                    ]
+                ]);
+            }
+
+            // Tambahkan video baru
+            $watchedVideos[] = [
+                'id' => (int) $enrichmentItemId,
+                'completed_at' => now()->toDateTimeString(),
+                'points_earned' => $reward,
+            ];
+
             $userEnrichment->watched_videos = $watchedVideos;
+            $userEnrichment->save();
+
+        } else { // link
+            // Cek duplikasi dengan cara yang aman
+            $alreadyCompleted = false;
+            foreach ($completedLinks as $link) {
+                $linkId = is_array($link) ? ($link['id'] ?? null) : $link;
+                if ($linkId == $enrichmentItemId) {
+                    $alreadyCompleted = true;
+                    break;
+                }
+            }
+
+            if ($alreadyCompleted) {
+                return back()->with([
+                    'flash' => [
+                        'info' => true,
+                        'message' => 'Link ini sudah ditandai selesai sebelumnya.',
+                    ]
+                ]);
+            }
+
+            // Tambahkan link baru
+            $completedLinks[] = [
+                'id' => (int) $enrichmentItemId,
+                'completed_at' => now()->toDateTimeString(),
+                'points_earned' => $reward,
+            ];
+
+            $userEnrichment->completed_links = $completedLinks;
             $userEnrichment->save();
         }
 
-        $enrichment = Enrichment::with('videos')->findOrFail($enrichmentId);
-        $allVideosWatched = count($watchedVideos) >= $enrichment->videos->count();
-
-        if ($allVideosWatched && !$userEnrichment->completed) {
-            $userEnrichment->update([
-                'completed' => true,
-                'completed_at' => now(),
-            ]);
-
-            $user = auth()->user();
-            $reward = (int) $enrichment->point_reward;
-            $user->increment('points', $reward);
-        }
-
-        return back()->with('success', 'Video ditandai sebagai telah ditonton');
-    }
-
-    /**
-     * Tandai pengayaan sebagai selesai
-     */
-    public function markCompleted($enrichmentId)
-    {
-        $enrichment = Enrichment::findOrFail($enrichmentId);
-        $user = auth()->user();
-        $reward = (int) $enrichment->point_reward;
-
-        $userEnrichment = UserEnrichment::firstOrCreate(
+        // ✅ TAMBAHAN: Track di user_progress (polymorphic)
+        UserProgress::firstOrCreate(
             [
                 'user_id' => $user->id,
-                'enrichment_id' => $enrichmentId,
+                'progressable_type' => Enrichment::class,
+                'progressable_id' => $enrichmentItemId,
             ],
             [
-                'watched_videos' => [],
+                'is_completed' => true,
+                'points_earned' => $reward,
+                'completed_at' => now(),
             ]
         );
 
-        if (!$userEnrichment->completed) {
+        // Tambahkan poin
+        $user->increment('points', $reward);
+
+        // Cek apakah semua enrichment sudah selesai
+        $this->checkEnrichmentCompletion($userEnrichment);
+
+        return back()->with([
+            'flash' => [
+                'success' => true,
+                'message' => ucfirst($type) . " berhasil ditandai selesai! Anda mendapatkan {$reward} poin 🔥",
+                'total_points' => $user->fresh()->points,
+            ]
+        ]);
+    }
+
+    private function checkEnrichmentCompletion(UserEnrichment $userEnrichment)
+    {
+        $module = Module::find($userEnrichment->module_id);
+        if (!$module) return;
+
+        // Hitung total items
+        $totalVideos = Enrichment::where('module_id', $module->id)
+            ->where('type', 'video')
+            ->count();
+
+        $totalLinks = Enrichment::where('module_id', $module->id)
+            ->where('type', 'link')
+            ->count();
+
+        // Hitung completed items - pastikan array
+        $watchedVideos = is_array($userEnrichment->watched_videos)
+            ? $userEnrichment->watched_videos
+            : [];
+
+        $completedLinks = is_array($userEnrichment->completed_links)
+            ? $userEnrichment->completed_links
+            : [];
+
+        $completedVideos = count($watchedVideos);
+        $completedLinks = count($completedLinks);
+
+        // Update status jika semua selesai
+        if ($completedVideos >= $totalVideos && $completedLinks >= $totalLinks && !$userEnrichment->completed) {
             $userEnrichment->update([
                 'completed' => true,
                 'completed_at' => now(),
             ]);
-
-            $user->increment('points', $reward);
-
-            return back()->with('success', "Pengayaan berhasil diselesaikan! Anda mendapatkan {$reward} poin.");
         }
-
-        return back()->with('info', 'Pengayaan sudah diselesaikan sebelumnya.');
-    }
-
-    /**
-     * Lacak klik pada link (opsional)
-     */
-    public function trackLinkClick(Request $request, $enrichmentId)
-    {
-        $request->validate([
-            'link_id' => 'required|exists:enrichment_links,id',
-        ]);
-
-        // Bisa ditambahkan logika untuk mencatat klik link
-
-        return response()->json(['success' => true]);
-    }
-
-    /**
-     * Dapatkan progres pengayaan user
-     */
-    public function getProgress($enrichmentId)
-    {
-        $enrichment = Enrichment::with('videos')->findOrFail($enrichmentId);
-
-        $userEnrichment = UserEnrichment::where('user_id', auth()->id())
-            ->where('enrichment_id', $enrichmentId)
-            ->first();
-
-        $totalVideos = $enrichment->videos->count();
-        $watchedVideos = $userEnrichment ? count($userEnrichment->watched_videos ?? []) : 0;
-
-        return response()->json([
-            'completed' => $userEnrichment?->completed ?? false,
-            'total_videos' => $totalVideos,
-            'watched_videos' => $watchedVideos,
-            'progress_percentage' => $totalVideos > 0
-                ? round(($watchedVideos / $totalVideos) * 100)
-                : 0,
-        ]);
     }
 }

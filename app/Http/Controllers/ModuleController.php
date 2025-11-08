@@ -11,6 +11,7 @@ use App\Models\UserProgress;
 use App\Models\QuizAttempt;
 use App\Models\AssignmentSubmission;
 use App\Services\ProgressService;
+use App\Models\UserEnrichment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -25,59 +26,188 @@ class ModuleController extends Controller
     }
 
     public function show(Module $module)
-    {
-        $user = Auth::user();
+{
+    $user = Auth::user();
 
-        // Load all related data
-        $module->load([
-            'materials',
-            'enrichments',
-            'quizzes.questions',
-            'assignments'
-        ]);
+    // Load all related data
+    $module->load([
+        'materials',
+        'enrichments',
+        'quizzes.questions',
+        'assignments'
+    ]);
 
-        // Get user progress for this module
-        $moduleProgress = $this->progressService->getModuleProgress($user, $module);
+    // Hitung progres user pada modul ini
+    $moduleProgress = $this->progressService->getModuleProgress($user, $module);
 
-        // Build module data
-        $moduleData = [
-            'id' => $module->id,
-            'title' => $module->title,
-            'description' => $module->description,
-            'color' => $this->getModuleColor($module->order_number),
-            'progress' => $moduleProgress['percentage'],
-            'totalLessons' => $moduleProgress['total'],
-            'completedLessons' => $moduleProgress['completed'],
-            'estimatedTime' => $this->getEstimatedTime($module->order_number),
-            'difficulty' => $this->getDifficulty($module->order_number),
-            'prerequisites' => $this->getPrerequisites($module->order_number)
-        ];
+    // Bangun data dasar modul
+    $moduleData = [
+        'id' => $module->id,
+        'title' => $module->title,
+        'description' => $module->description,
+        'color' => $this->getModuleColor($module->order_number),
+        'progress' => $moduleProgress['percentage'],
+        'totalLessons' => $moduleProgress['total'],
+        'completedLessons' => $moduleProgress['completed'],
+        'estimatedTime' => $this->getEstimatedTime($module->order_number),
+        'difficulty' => $this->getDifficulty($module->order_number),
+        'prerequisites' => $this->getPrerequisites($module->order_number),
+    ];
 
-        // Build module content
-        $moduleContent = [
-            'cp' => $this->buildCPContent($module),
-            'atp' => $this->buildATPContent($module),
-            'materi' => $this->buildMaterialContent($module, $user),
-            'pengayaan' => $this->buildEnrichmentContent($module, $user),
-            'quiz' => $this->buildQuizContent($module, $user),
-            'praktikum' => $this->buildAssignmentContent($module, $user)
-        ];
+    // Ambil ID modul
+    $moduleId = $module->id;
 
-        return Inertia::render('module/detail', [
-            'moduleData' => $moduleData,
-            'moduleContent' => $moduleContent,
-            'breadcrumbs' => [
-                ['title' => 'Dashboard', 'href' => '/dashboard'],
-                ['title' => 'Modul Pembelajaran', 'href' => '/dashboard'],
-                ['title' => $module->title, 'href' => "/module/{$module->id}"],
-            ]
-        ]);
+    // Ambil daftar pengayaan (video & link)
+    $enrichmentVideos = Enrichment::where('module_id', $moduleId)
+        ->where('type', 'video')
+        ->where('is_active', 1)
+        ->orderBy('order_number')
+        ->get();
+
+    $enrichmentLinks = Enrichment::where('module_id', $moduleId)
+        ->where('type', 'link')
+        ->where('is_active', 1)
+        ->orderBy('order_number')
+        ->get();
+
+    // Ambil progres pengayaan user
+    $userEnrichment = UserEnrichment::where('user_id', $user->id)
+        ->where('module_id', $moduleId)
+        ->first();
+
+    // ✅ PERBAIKAN: Pastikan selalu berupa array dan extract ID saja
+    $watchedVideosRaw = [];
+    $completedLinksRaw = [];
+
+    if ($userEnrichment) {
+        // Decode jika string JSON
+        $watchedVideosData = is_string($userEnrichment->watched_videos)
+            ? json_decode($userEnrichment->watched_videos, true)
+            : ($userEnrichment->watched_videos ?? []);
+
+        $completedLinksData = is_string($userEnrichment->completed_links)
+            ? json_decode($userEnrichment->completed_links, true)
+            : ($userEnrichment->completed_links ?? []);
+
+        // Extract ID saja (support format lama & baru)
+        foreach ($watchedVideosData as $video) {
+            if (is_array($video) && isset($video['id'])) {
+                $watchedVideosRaw[] = $video['id'];
+            } elseif (is_numeric($video)) {
+                $watchedVideosRaw[] = (int)$video;
+            }
+        }
+
+        foreach ($completedLinksData as $link) {
+            if (is_array($link) && isset($link['id'])) {
+                $completedLinksRaw[] = $link['id'];
+            } elseif (is_numeric($link)) {
+                $completedLinksRaw[] = (int)$link;
+            }
+        }
     }
+
+    // ✅ Sekarang hanya berisi ID integer
+    $watchedVideos = array_values(array_unique($watchedVideosRaw));
+    $completedLinks = array_values(array_unique($completedLinksRaw));
+
+    // ✅ Hitung poin yang didapat (sekarang aman menggunakan whereIn)
+    $completedEnrichmentIds = array_merge($watchedVideos, $completedLinks);
+
+    $earnedPoints = 0;
+    if (!empty($completedEnrichmentIds)) {
+        $earnedPoints = Enrichment::whereIn('id', $completedEnrichmentIds)
+            ->sum('point_reward');
+    }
+
+    // Total poin maksimum
+    $totalPossiblePoints = Enrichment::where('module_id', $moduleId)
+        ->where('is_active', 1)
+        ->sum('point_reward');
+
+    $allCompleted = $userEnrichment?->completed ?? false;
+
+    // Bangun konten modul
+    $moduleContent = [
+        'cp' => $this->buildCPContent($module),
+        'atp' => $this->buildATPContent($module),
+        'materi' => $this->buildMaterialContent($module, $user),
+        'quiz' => $this->buildQuizContent($module, $user),
+        'praktikum' => $this->buildAssignmentContent($module, $user),
+        'pengayaan' => [
+            'id' => $moduleId,
+            'title' => 'Materi Pengayaan',
+            'description' => 'Video dan link tambahan untuk memperdalam pemahaman',
+            'points' => $totalPossiblePoints,
+            'totalPoints' => $totalPossiblePoints,
+            'completed' => $allCompleted,
+            'videos' => $enrichmentVideos->map(function ($video) use ($watchedVideos) {
+                return [
+                    'id' => $video->id,
+                    'title' => $video->title,
+                    'platform' => $this->extractPlatform($video->url),
+                    'duration' => 'N/A',
+                    'url' => $video->url,
+                    'thumbnail' => $this->getYoutubeThumbnail($video->url),
+                    'watched' => in_array($video->id, $watchedVideos),
+                ];
+            }),
+            'links' => $enrichmentLinks->map(function ($link) use ($completedLinks) {
+                return [
+                    'id' => $link->id,
+                    'title' => $link->title,
+                    'url' => $link->url,
+                    'type' => $this->getLinkType($link->url),
+                    'description' => $link->description,
+                    'completed' => in_array($link->id, $completedLinks),
+                ];
+            }),
+        ],
+    ];
+
+    // Kirim ke Inertia
+    return Inertia::render('module/detail', [
+        'moduleData' => $moduleData,
+        'moduleContent' => $moduleContent,
+        'breadcrumbs' => [
+            ['title' => 'Dashboard', 'href' => '/dashboard'],
+            ['title' => 'Modul Pembelajaran', 'href' => '/dashboard'],
+            ['title' => $module->title, 'href' => "/module/{$module->id}"],
+        ],
+    ]);
+}
+    private function extractPlatform($url)
+    {
+        if (strpos($url, 'youtube.com') !== false || strpos($url, 'youtu.be') !== false) {
+            return 'YouTube';
+        }
+        return 'Video';
+    }
+
+    private function getYoutubeThumbnail($url)
+    {
+        if (preg_match('/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\?]+)/', $url, $matches)) {
+            $videoId = $matches[1];
+            return "https://img.youtube.com/vi/{$videoId}/mqdefault.jpg";
+        }
+        return 'https://via.placeholder.com/320x240?text=Video';
+    }
+
+    private function getLinkType($url)
+    {
+        $domain = parse_url($url, PHP_URL_HOST);
+        if (strpos($domain, 'geeksforgeeks') !== false) return 'Tutorial';
+        if (strpos($domain, 'programiz') !== false) return 'Tutorial';
+        if (strpos($domain, 'developer.mozilla.org') !== false) return 'Documentation';
+        if (strpos($domain, 'tutorialspoint') !== false) return 'Tutorial';
+        return 'Article';
+    }
+
 
     private function buildCPContent($module)
     {
         return [
-            'title' => 'Capaian Pembelajaran (CP)',
+            'title' => 'Capaian Pembelajaran (CPMK)',
             'description' => 'Tujuan pembelajaran yang akan dicapai dalam modul ini',
             'points' => 10,
             'completed' => !empty($module->cp_atp), // Mark completed if CP/ATP exists

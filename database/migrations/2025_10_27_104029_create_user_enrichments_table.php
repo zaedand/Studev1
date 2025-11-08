@@ -11,8 +11,10 @@ return new class extends Migration
         Schema::create('user_enrichments', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->foreignId('enrichment_id')->constrained()->onDelete('cascade');
-            $table->json('watched_videos')->nullable(); // daftar video yang ditonton
+            $table->foreignId('module_id')->constrained()->onDelete('cascade'); // ✅ tambahkan kolom ini
+            $table->foreignId('enrichment_id')->nullable()->constrained()->onDelete('cascade');
+            $table->json('watched_videos')->nullable();
+            $table->json('completed_links')->nullable();
             $table->boolean('completed')->default(false);
             $table->timestamp('completed_at')->nullable();
             $table->timestamps();
