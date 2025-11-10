@@ -10,6 +10,11 @@ use App\Models\Assignment;
 use App\Models\UserProgress;
 use App\Models\QuizAttempt;
 use App\Models\AssignmentSubmission;
+use App\Models\ModuleCpmk;
+use App\Models\UserCpmk;
+use App\Models\ModuleLearningObjective;
+use App\Models\UserLearningObjective;
+
 use App\Services\ProgressService;
 use App\Models\UserEnrichment;
 use Illuminate\Http\Request;
@@ -129,8 +134,8 @@ class ModuleController extends Controller
 
     // Bangun konten modul
     $moduleContent = [
-        'cp' => $this->buildCPContent($module),
-        'atp' => $this->buildATPContent($module),
+        'cp' => $this->buildCPContent($module, $user),
+        'atp' => $this->buildATPContent($module, $user),
         'materi' => $this->buildMaterialContent($module, $user),
         'quiz' => $this->buildQuizContent($module, $user),
         'praktikum' => $this->buildAssignmentContent($module, $user),
@@ -204,27 +209,65 @@ class ModuleController extends Controller
     }
 
 
-    private function buildCPContent($module)
-    {
-        return [
-            'title' => 'Capaian Pembelajaran (CPMK)',
-            'description' => 'Tujuan pembelajaran yang akan dicapai dalam modul ini',
-            'points' => 10,
-            'completed' => !empty($module->cp_atp), // Mark completed if CP/ATP exists
-            'content' => $this->getCPContentByOrder($module->order_number)
-        ];
+    private function buildCPContent($module, $user)
+{
+    // Cari CPMK untuk modul ini
+    $moduleCpmk = ModuleCpmk::where('module_id', $module->id)->first();
+
+    if (!$moduleCpmk) {
+        // Jika belum ada, buat dari data hardcoded
+        $content = $this->getCPContentByOrder($module->order_number);
+        $moduleCpmk = ModuleCpmk::create([
+            'module_id' => $module->id,
+            'content' => $content,
+            'point_reward' => 10,
+        ]);
     }
 
-    private function buildATPContent($module)
-    {
-        return [
-            'title' => 'Alur Tujuan Pembelajaran (ATP)',
-            'description' => 'Langkah-langkah pembelajaran sistematis',
-            'points' => 10,
-            'completed' => !empty($module->cp_atp), // Same as CP
-            'content' => $this->getATPContentByOrder($module->order_number)
-        ];
+    // Cek apakah user sudah menyelesaikan
+    $userCpmk = UserCpmk::where('user_id', $user->id)
+        ->where('module_cpmk_id', $moduleCpmk->id)
+        ->first();
+
+    return [
+        'id' => $moduleCpmk->id,
+        'title' => 'Capaian Pembelajaran Mata Kuliah (CPMK)',
+        'description' => 'Tujuan pembelajaran yang akan dicapai dalam modul ini',
+        'points' => $moduleCpmk->point_reward,
+        'completed' => $userCpmk ? $userCpmk->is_completed : false,
+        'content' => $moduleCpmk->content,
+    ];
+}
+
+private function buildATPContent($module, $user)
+{
+    // Cari Tujuan Pembelajaran untuk modul ini
+    $learningObjective = ModuleLearningObjective::where('module_id', $module->id)->first();
+
+    if (!$learningObjective) {
+        // Jika belum ada, buat dari data hardcoded
+        $content = $this->getATPContentByOrder($module->order_number);
+        $learningObjective = ModuleLearningObjective::create([
+            'module_id' => $module->id,
+            'content' => $content,
+            'point_reward' => 10,
+        ]);
     }
+
+    // Cek apakah user sudah menyelesaikan
+    $userLearningObj = UserLearningObjective::where('user_id', $user->id)
+        ->where('module_learning_objective_id', $learningObjective->id)
+        ->first();
+
+    return [
+        'id' => $learningObjective->id,
+        'title' => 'Tujuan Pembelajaran',
+        'description' => 'Langkah-langkah pembelajaran sistematis',
+        'points' => $learningObjective->point_reward,
+        'completed' => $userLearningObj ? $userLearningObj->is_completed : false,
+        'content' => $learningObjective->content,
+    ];
+}
 
     private function buildMaterialContent($module, $user)
     {

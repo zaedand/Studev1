@@ -325,27 +325,44 @@ const handleEnrichmentComplete = useCallback(async (itemId: number, itemType: 'v
         );
     }, [state.selectedFile, state.loading, moduleContent.praktikum]);
 
-    const handleComplete = useCallback(async (type: 'cp' | 'atp') => {
-        if (state.completedSections[type]) {
-            alert('Sudah diselesaikan sebelumnya');
-            return;
+    const handleComplete = useCallback(async (type: 'cp' | 'learning_objective') => {
+    if (state.loading) return;
+
+    const endpoint = type === 'cp'
+        ? `/modules/${moduleData.id}/cpmk/complete`
+        : `/modules/${moduleData.id}/learning-objective/complete`;
+
+    setState(prev => ({ ...prev, loading: true }));
+
+    router.post(
+        endpoint,
+        {},
+        {
+            preserveScroll: true,
+            onSuccess: (page) => {
+                const response = page.props.flash as any;
+                if (response?.success) {
+                    setState(prev => ({
+                        ...prev,
+                        completedSections: {
+                            ...prev.completedSections,
+                            [type === 'cpmk' ? 'cp' : 'atp']: true
+                        },
+                        userPoints: response.total_points
+                    }));
+                }
+                router.reload({ only: ['moduleData', 'moduleContent'] });
+            },
+            onError: (errors) => {
+                console.error('Error:', errors);
+                alert('Terjadi kesalahan. Silakan coba lagi.');
+            },
+            onFinish: () => {
+                setState(prev => ({ ...prev, loading: false }));
+            }
         }
-
-        const points = type === 'cp' ? moduleContent.cp.points : moduleContent.atp.points;
-
-        setState(prev => ({ ...prev, loading: true }));
-
-        setTimeout(() => {
-            setState(prev => ({
-                ...prev,
-                completedSections: { ...prev.completedSections, [type]: true },
-                userPoints: prev.userPoints + points,
-                loading: false
-            }));
-            alert(`Selamat! Anda mendapat ${points} poin fire!`);
-            router.reload({ only: ['moduleData', 'moduleContent'] });
-        }, 1000);
-    }, [state.completedSections, state.loading, moduleContent]);
+    );
+}, [state.loading, moduleData.id]);
 
     const handleMaterialComplete = useCallback(() => {
         if (state.completedSections.materi) {

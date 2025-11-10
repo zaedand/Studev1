@@ -6,6 +6,8 @@ use App\Http\Controllers\Student\MaterialController;
 use App\Http\Controllers\Student\EnrichmentController;
 use App\Http\Controllers\Student\AssignmentController;
 use App\Http\Controllers\Student\ProgressController;
+use App\Http\Controllers\Student\CpmkController;
+use App\Http\Controllers\Student\LearningObjectiveController;
 
 use App\Http\Controllers\QuizController;
 use App\Http\Controllers\CompilerController;
@@ -31,10 +33,9 @@ Route::middleware('auth')->group(function () {
 // Student specific routes
 Route::middleware(['auth', 'role:student'])->prefix('student')->name('student.')->group(function () {
     // Existing routes...
-    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-    Route::get('/modules/{module}', [ModuleController::class, 'show'])->name('modules.show');
-    Route::get('/leaderboard', [LeaderboardController::class, 'index'])->name('leaderboard');
 
+    Route::get('/modules/{module}', [ModuleController::class, 'show'])->name('modules.show');
+    
     // Quiz routes (existing)
     Route::get('/module/{moduleId}/quiz', [QuizController::class, 'show'])->name('quiz.show');
     Route::post('/module/{moduleId}/quiz/start', [QuizController::class, 'start'])->name('quiz.start');
@@ -50,6 +51,14 @@ Route::middleware(['auth', 'role:student'])->prefix('student')->name('student.')
 Route::middleware(['auth'])->group(function () {
     // Module routes
     Route::get('/module/{id}', [ModuleController::class, 'show'])->name('module.show');
+
+    // CPMK Routes
+    Route::post('/modules/{moduleId}/cpmk/complete', [CpmkController::class, 'markCompleted'])
+        ->name('cpmk.complete');
+
+    // Learning Objectives Routes
+    Route::post('/modules/{moduleId}/learning-objective/complete', [LearningObjectiveController::class, 'markCompleted'])
+        ->name('learning-objective.complete');
 
     // Student Quiz routes
     Route::prefix('module/{moduleId}/quiz')->name('quiz.')->group(function () {
