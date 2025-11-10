@@ -102,15 +102,15 @@ class CompilerController extends Controller
     private function executeWithJDoodle(string $language, string $code, string $input): array
 {
     $payload = [
-        'clientId'     => env('JDOODLE_CLIENT_ID'),
-        'clientSecret' => env('JDOODLE_CLIENT_SECRET'),
+        'clientId'     => self::JDOODLE_CLIENT_ID,
+        'clientSecret' => self::JDOODLE_CLIENT_SECRET,
         'script'       => $code,
         'stdin'        => $input,
         'language'     => $language,
         'versionIndex' => "0"
     ];
 
-    $response = Http::timeout(30)->post(env('JDOODLE_URL'), $payload);
+    $response = Http::timeout(30)->post(self::JDOODLE_URL, $payload);
 
     if ($response->failed()) {
         throw new \Exception('Failed: ' . $response->body());

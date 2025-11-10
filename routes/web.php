@@ -5,52 +5,60 @@ use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\Student\MaterialController;
 use App\Http\Controllers\Student\EnrichmentController;
 use App\Http\Controllers\Student\AssignmentController;
-use App\Http\Controllers\Student\ProgressController;
 use App\Http\Controllers\Student\CpmkController;
 use App\Http\Controllers\Student\LearningObjectiveController;
-
 use App\Http\Controllers\QuizController;
+use App\Http\Controllers\LeaderboardController;
 use App\Http\Controllers\CompilerController;
 use App\Http\Controllers\Instructor\QuizController as InstructorQuizController;
 use Inertia\Inertia;
 
+/*
+|--------------------------------------------------------------------------
+| Public Routes
+|--------------------------------------------------------------------------
+*/
 Route::get('/', function () {
     return Inertia::render('welcome');
 })->name('welcome');
 
+/*
+|--------------------------------------------------------------------------
+| Authenticated Routes (All Roles)
+|--------------------------------------------------------------------------
+*/
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::get('dashboard', function () {
+    // Dashboard - redirect based on role
+    Route::get('/dashboard', function () {
+        $user = auth()->user();
+
+        if ($user->hasRole('instructor')) {
+            return redirect()->route('instructor.dashboard');
+        }
+
         return Inertia::render('dashboard');
     })->name('dashboard');
-});
 
-
-// Public module routes (accessible to all authenticated users)
-Route::middleware('auth')->group(function () {
-    Route::get('/module/{module}', [ModuleController::class, 'show'])->name('module.show');
-});
-
-// Student specific routes
-Route::middleware(['auth', 'role:student'])->prefix('student')->name('student.')->group(function () {
-    // Existing routes...
-
-    Route::get('/modules/{module}', [ModuleController::class, 'show'])->name('modules.show');
-    
-    // Quiz routes (existing)
-    Route::get('/module/{moduleId}/quiz', [QuizController::class, 'show'])->name('quiz.show');
-    Route::post('/module/{moduleId}/quiz/start', [QuizController::class, 'start'])->name('quiz.start');
-    Route::post('/module/{moduleId}/quiz/submit', [QuizController::class, 'submit'])->name('quiz.submit');
-    Route::get('/module/{moduleId}/quiz/result', [QuizController::class, 'result'])->name('quiz.result');
-
-
+    // Compiler - accessible to all authenticated users
     Route::get('/compiler', function () {
-        return Inertia::render('Student/Compiler');
+        return Inertia::render('compiler');
     })->name('compiler');
+
+    // Leaderboard - accessible to all authenticated users
+    Route::get('/leaderboard', [LeaderboardController::class, 'index'])
+        ->name('leaderboard');
 });
-// Student routes
-Route::middleware(['auth'])->group(function () {
-    // Module routes
-    Route::get('/module/{id}', [ModuleController::class, 'show'])->name('module.show');
+
+/*
+|--------------------------------------------------------------------------
+| Student Routes
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth', 'role:student'])->group(function () {
+
+    // Module Detail
+    Route::get('/module/{module}', [ModuleController::class, 'show'])
+        ->name('module.show');
 
     // CPMK Routes
     Route::post('/modules/{moduleId}/cpmk/complete', [CpmkController::class, 'markCompleted'])
@@ -60,72 +68,125 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/modules/{moduleId}/learning-objective/complete', [LearningObjectiveController::class, 'markCompleted'])
         ->name('learning-objective.complete');
 
-    // Student Quiz routes
-    Route::prefix('module/{moduleId}/quiz')->name('quiz.')->group(function () {
-        Route::get('/', [QuizController::class, 'show'])->name('show');
-        Route::get('/result', [QuizController::class, 'result'])->name('result');
-        Route::post('/start', [QuizController::class, 'start'])->name('start');
-        Route::post('/submit', [QuizController::class, 'submit'])->name('submit');
+    // Material Routes
+    Route::prefix('materials')->name('materials.')->group(function () {
+        Route::get('/{material}', [MaterialController::class, 'show'])
+            ->name('show');
+        Route::post('/{material}/complete', [MaterialController::class, 'markCompleted'])
+            ->name('complete');
+        Route::get('/{material}/download', [MaterialController::class, 'download'])
+            ->name('download');
     });
 
-     // Material routes
-    Route::get('/materials/{material}', [MaterialController::class, 'show'])->name('materials.show');
-    Route::post('/materials/{material}/complete', [MaterialController::class, 'markCompleted'])->name('materials.complete');
-    Route::get('/materials/{material}/download', [MaterialController::class, 'download'])->name('materials.download');
+    // Enrichment Routes
+    Route::prefix('enrichments')->name('enrichments.')->group(function () {
+        Route::get('/{enrichment}', [EnrichmentController::class, 'show'])
+            ->name('show');
+        Route::post('/{enrichment}/complete', [EnrichmentController::class, 'markCompleted'])
+            ->name('complete');
+    });
 
-    // Enrichment routes
-    Route::get('/enrichments/{enrichment}', [EnrichmentController::class, 'show'])->name('enrichments.show');
-    Route::post('/enrichments/{enrichment}/complete', [EnrichmentController::class, 'markCompleted'])
-    ->name('enrichments.complete');
+    // Quiz Routes
+    Route::prefix('module/{moduleId}/quiz')->name('quiz.')->group(function () {
+        Route::get('/', [QuizController::class, 'show'])
+            ->name('show');
+        Route::post('/start', [QuizController::class, 'start'])
+            ->name('start');
+        Route::post('/submit', [QuizController::class, 'submit'])
+            ->name('submit');
+        Route::get('/result', [QuizController::class, 'result'])
+            ->name('result');
+    });
 
-    // Assignment routes
-    Route::get('/assignments/{assignment}', [AssignmentController::class, 'show'])->name('assignments.show');
-    Route::post('/assignments/{assignment}/submit', [AssignmentController::class, 'submit'])->name('assignments.submit');
-    Route::get('/assignment-submissions/{submission}/download', [AssignmentController::class, 'download'])->name('assignment-submissions.download');
+    // Assignment Routes
+    Route::prefix('assignments')->name('assignments.')->group(function () {
+        Route::get('/{assignment}', [AssignmentController::class, 'show'])
+            ->name('show');
+        Route::post('/{assignment}/submit', [AssignmentController::class, 'submit'])
+            ->name('submit');
+    });
 
-
-    Route::get('/leaderboard', function () {
-        return Inertia::render('leaderboard');
-    })->name('leaderboard');
-
-    Route::get('/compiler', function () {
-        return Inertia::render('compiler');
-    })->name('compiler');
+    // Assignment Submission Download
+    Route::get('/assignment-submissions/{submission}/download', [AssignmentController::class, 'download'])
+        ->name('assignment-submissions.download');
 });
 
-// Instructor routes
-Route::middleware(['auth'])->prefix('instructor')->name('instructor.')->group(function () {
+/*
+|--------------------------------------------------------------------------
+| Instructor Routes
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth', 'role:instructor'])->prefix('instructor')->name('instructor.')->group(function () {
+
+    // Dashboard
     Route::get('/dashboard', function () {
         return Inertia::render('Instructor/InsDashboard');
     })->name('dashboard');
 
+    // Praktikum Management
     Route::get('/praktikum-manage', function () {
         return Inertia::render('Instructor/praktikum');
     })->name('praktikum-manage');
 
-    // Quiz Management Routes
-    Route::get('/quiz-manage', [InstructorQuizController::class, 'index'])->name('quiz-manage');
+    // Quiz Management
+    Route::prefix('quiz')->name('quiz.')->group(function () {
+        // List & Analytics (specific routes first)
+        Route::get('/results/data', [InstructorQuizController::class, 'results'])
+            ->name('results');
+        Route::get('/analytics/data', [InstructorQuizController::class, 'analytics'])
+            ->name('analytics');
 
-    // Quiz CRUD routes
-    Route::post('/quiz', [InstructorQuizController::class, 'store'])->name('quiz.store');
-    Route::get('/quiz/{quiz}', [InstructorQuizController::class, 'show'])->name('quiz.show');
-    Route::put('/quiz/{quiz}', [InstructorQuizController::class, 'update'])->name('quiz.update');
-    Route::delete('/quiz/{quiz}', [InstructorQuizController::class, 'destroy'])->name('quiz.destroy');
+        // Index
+        Route::get('/', [InstructorQuizController::class, 'index'])
+            ->name('index');
 
-    // Additional quiz routes - IMPORTANT: Put specific routes BEFORE parameterized routes
-    Route::get('/quiz/results/data', [InstructorQuizController::class, 'results'])->name('quiz.results');
-    Route::get('/quiz/analytics/data', [InstructorQuizController::class, 'analytics'])->name('quiz.analytics');
-    Route::patch('/quiz/{quiz}/toggle-status', [InstructorQuizController::class, 'toggleStatus'])->name('quiz.toggle-status');
-    Route::get('/quiz/result/{attempt}', [InstructorQuizController::class, 'resultDetail'])->name('quiz.result-detail');
+        // CRUD operations
+        Route::post('/', [InstructorQuizController::class, 'store'])
+            ->name('store');
+        Route::get('/{quiz}', [InstructorQuizController::class, 'show'])
+            ->name('show');
+        Route::put('/{quiz}', [InstructorQuizController::class, 'update'])
+            ->name('update');
+        Route::delete('/{quiz}', [InstructorQuizController::class, 'destroy'])
+            ->name('destroy');
+
+        // Additional actions
+        Route::patch('/{quiz}/toggle-status', [InstructorQuizController::class, 'toggleStatus'])
+            ->name('toggle-status');
+        Route::get('/result/{attempt}', [InstructorQuizController::class, 'resultDetail'])
+            ->name('result-detail');
+    });
+
+    // Module Management (if needed)
+    Route::prefix('modules')->name('modules.')->group(function () {
+        // Add instructor module management routes here
+    });
+
+    // Material Management (if needed)
+    Route::prefix('materials')->name('materials.')->group(function () {
+        // Add instructor material management routes here
+    });
 });
 
-// API routes for compiler
-Route::prefix('api/compiler')->group(function () {
-    Route::post('/execute', [CompilerController::class, 'executeCode']);
-    Route::post('/execute-judge0', [CompilerController::class, 'executeCodeJudge0']);
-    Route::get('/languages', [CompilerController::class, 'getSupportedLanguages']);
-    Route::get('/examples', [CompilerController::class, 'getExamples']);
+/*
+|--------------------------------------------------------------------------
+| API Routes (No CSRF, accessible to authenticated users)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('api')->middleware('auth')->group(function () {
+    // Compiler API
+    Route::prefix('compiler')->group(function () {
+        Route::post('/execute', [CompilerController::class, 'executeCode']);
+        Route::post('/execute-judge0', [CompilerController::class, 'executeCodeJudge0']);
+        Route::get('/languages', [CompilerController::class, 'getSupportedLanguages']);
+        Route::get('/examples', [CompilerController::class, 'getExamples']);
+    });
 });
 
+/*
+|--------------------------------------------------------------------------
+| Additional Route Files
+|--------------------------------------------------------------------------
+*/
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';

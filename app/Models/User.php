@@ -31,19 +31,44 @@ class User extends Authenticatable
     ];
 
     // === Role Helpers ===
-    public function isInstructor(): bool
+    /**
+     * Check if user has a specific role
+     */
+    public function hasRole(string $role): bool
     {
-        return $this->role === 'instructor';
+        return $this->role === $role;
     }
 
+    /**
+     * Check if user is a student
+     */
     public function isStudent(): bool
     {
         return $this->role === 'student';
     }
 
-    public function isAdmin(): bool
+    /**
+     * Check if user is an instructor
+     */
+    public function isInstructor(): bool
     {
-        return $this->role === 'admin';
+        return $this->role === 'instructor';
+    }
+
+    /**
+     * Scope query to only include students
+     */
+    public function scopeStudents($query)
+    {
+        return $query->where('role', 'student');
+    }
+
+    /**
+     * Scope query to only include instructors
+     */
+    public function scopeInstructors($query)
+    {
+        return $query->where('role', 'instructor');
     }
 
     // === Point Management ===
@@ -61,5 +86,10 @@ class User extends Authenticatable
     public function assignmentSubmissions(): HasMany
     {
         return $this->hasMany(AssignmentSubmission::class);
+    }
+
+    public function progress(): HasMany
+    {
+        return $this->hasMany(UserProgress::class, 'user_id');
     }
 }

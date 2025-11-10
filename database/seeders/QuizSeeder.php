@@ -12,10 +12,20 @@ class QuizSeeder extends Seeder
     public function run(): void
     {
         $quizData = [
-            1 => [ // Pengenalan Pemrograman
-                'title' => 'Quiz Pengenalan Pemrograman',
-                'description' => 'Uji pemahaman Anda tentang konsep dasar pemrograman',
+            1 => [ // Pengenalan C++
+                'title' => 'Quiz Pengenalan C++',
+                'description' => 'Uji pemahaman Anda tentang dasar-dasar C++ dan algoritma pemrograman',
                 'questions' => [
+                    [
+                        'question' => 'Siapa yang mengembangkan bahasa pemrograman C++?',
+                        'options' => [
+                            'A' => 'Dennis Ritchie',
+                            'B' => 'Bjarne Stroustrup',
+                            'C' => 'James Gosling',
+                            'D' => 'Guido van Rossum'
+                        ],
+                        'correct_answer' => 'B'
+                    ],
                     [
                         'question' => 'Apa yang dimaksud dengan algoritma dalam pemrograman?',
                         'options' => [
@@ -27,14 +37,14 @@ class QuizSeeder extends Seeder
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Manakah yang merupakan struktur data dasar?',
+                        'question' => 'IDE singkatan dari?',
                         'options' => [
-                            'A' => 'HTML',
-                            'B' => 'CSS',
-                            'C' => 'Array',
-                            'D' => 'JavaScript'
+                            'A' => 'Internet Development Environment',
+                            'B' => 'Integrated Development Environment',
+                            'C' => 'Internal Database Engine',
+                            'D' => 'Interactive Design Editor'
                         ],
-                        'correct_answer' => 'C'
+                        'correct_answer' => 'B'
                     ],
                     [
                         'question' => 'Apa fungsi dari compiler?',
@@ -43,26 +53,6 @@ class QuizSeeder extends Seeder
                             'B' => 'Menerjemahkan kode sumber ke kode mesin',
                             'C' => 'Mendesain interface',
                             'D' => 'Menyimpan data'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'question' => 'Variabel dalam pemrograman digunakan untuk?',
-                        'options' => [
-                            'A' => 'Menyimpan nilai atau data',
-                            'B' => 'Menjalankan program',
-                            'C' => 'Membuat tampilan',
-                            'D' => 'Mengatur hardware'
-                        ],
-                        'correct_answer' => 'A'
-                    ],
-                    [
-                        'question' => 'Apa yang dimaksud dengan syntax error?',
-                        'options' => [
-                            'A' => 'Error dalam logic program',
-                            'B' => 'Error karena salah penulisan kode',
-                            'C' => 'Error karena hardware rusak',
-                            'D' => 'Error karena internet lambat'
                         ],
                         'correct_answer' => 'B'
                     ],
@@ -77,156 +67,166 @@ class QuizSeeder extends Seeder
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Pseudocode adalah?',
+                        'question' => 'Header file yang benar untuk input/output dalam C++ adalah?',
                         'options' => [
-                            'A' => 'Bahasa pemrograman baru',
-                            'B' => 'Kode palsu atau virus',
-                            'C' => 'Penulisan algoritma dengan bahasa manusia',
-                            'D' => 'Software development tool'
-                        ],
-                        'correct_answer' => 'C'
-                    ],
-                    [
-                        'question' => 'IDE singkatan dari?',
-                        'options' => [
-                            'A' => 'Internet Development Environment',
-                            'B' => 'Integrated Development Environment',
-                            'C' => 'Internal Database Engine',
-                            'D' => 'Interactive Design Editor'
+                            'A' => '#include <stdio.h>',
+                            'B' => '#include <iostream.h>',
+                            'C' => '#include <conio.h>',
+                            'D' => '#include <stdlib.h>'
                         ],
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Manakah yang bukan termasuk tipe data dasar?',
+                        'question' => 'Fungsi utama dalam program C++ adalah?',
                         'options' => [
-                            'A' => 'Integer',
-                            'B' => 'String',
-                            'C' => 'Boolean',
-                            'D' => 'HTML'
+                            'A' => 'start()',
+                            'B' => 'begin()',
+                            'C' => 'main()',
+                            'D' => 'program()'
+                        ],
+                        'correct_answer' => 'C'
+                    ],
+                    [
+                        'question' => 'Apa yang dimaksud dengan syntax error?',
+                        'options' => [
+                            'A' => 'Error dalam logic program',
+                            'B' => 'Error karena salah penulisan kode',
+                            'C' => 'Error karena hardware rusak',
+                            'D' => 'Error karena internet lambat'
+                        ],
+                        'correct_answer' => 'B'
+                    ],
+                    [
+                        'question' => 'Manakah yang bukan termasuk reserved word dalam C++?',
+                        'options' => [
+                            'A' => 'int',
+                            'B' => 'float',
+                            'C' => 'cout',
+                            'D' => 'myVariable'
                         ],
                         'correct_answer' => 'D'
                     ],
                     [
-                        'question' => 'Debugging adalah proses untuk?',
+                        'question' => 'Tanda "//" dalam C++ digunakan untuk?',
                         'options' => [
-                            'A' => 'Membuat program baru',
-                            'B' => 'Mencari dan memperbaiki error',
-                            'C' => 'Menginstall software',
-                            'D' => 'Mendesain interface'
+                            'A' => 'Pembagian',
+                            'B' => 'Komentar satu baris',
+                            'C' => 'Perkalian',
+                            'D' => 'Operator logika'
                         ],
                         'correct_answer' => 'B'
                     ]
                 ]
             ],
-            2 => [ // Variabel dan Tipe Data (Update dari Looping)
-                'title' => 'Quiz Variabel dan Tipe Data',
-                'description' => 'Uji pemahaman Anda tentang variabel dan tipe data',
+            2 => [ // Operator
+                'title' => 'Quiz Operator',
+                'description' => 'Uji pemahaman Anda tentang berbagai jenis operator dalam C++',
                 'questions' => [
                     [
-                        'question' => 'Apa yang dimaksud dengan variabel dalam pemrograman?',
+                        'question' => 'Operator % digunakan untuk operasi?',
                         'options' => [
-                            'A' => 'Nilai yang selalu tetap',
-                            'B' => 'Tempat penyimpanan data yang dapat berubah',
-                            'C' => 'Fungsi matematika',
-                            'D' => 'Program kecil'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'question' => 'Manakah yang merupakan tipe data numerik?',
-                        'options' => [
-                            'A' => 'String',
-                            'B' => 'Boolean',
-                            'C' => 'Integer',
-                            'D' => 'Char'
+                            'A' => 'Perkalian',
+                            'B' => 'Pembagian',
+                            'C' => 'Sisa pembagian (modulus)',
+                            'D' => 'Pangkat'
                         ],
                         'correct_answer' => 'C'
                     ],
                     [
-                        'question' => 'Tipe data boolean dapat menyimpan nilai?',
+                        'question' => 'Hasil dari 10 % 3 adalah?',
                         'options' => [
-                            'A' => 'Angka bulat',
-                            'B' => 'Huruf',
-                            'C' => 'True atau False',
-                            'D' => 'Desimal'
-                        ],
-                        'correct_answer' => 'C'
-                    ],
-                    [
-                        'question' => 'String digunakan untuk menyimpan?',
-                        'options' => [
-                            'A' => 'Angka',
-                            'B' => 'Karakter atau teks',
-                            'C' => 'True/False',
-                            'D' => 'Gambar'
+                            'A' => '3',
+                            'B' => '1',
+                            'C' => '0',
+                            'D' => '10'
                         ],
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Apa perbedaan int dan float?',
+                        'question' => 'Operator ++ disebut?',
+                        'options' => [
+                            'A' => 'Decrement',
+                            'B' => 'Increment',
+                            'C' => 'Assignment',
+                            'D' => 'Comparison'
+                        ],
+                        'correct_answer' => 'B'
+                    ],
+                    [
+                        'question' => 'Apa perbedaan antara ++a dan a++?',
                         'options' => [
                             'A' => 'Tidak ada perbedaan',
-                            'B' => 'Int untuk bilangan bulat, float untuk desimal',
-                            'C' => 'Float lebih cepat',
-                            'D' => 'Int hanya untuk angka positif'
+                            'B' => '++a menambah sebelum digunakan, a++ menambah setelah digunakan',
+                            'C' => '++a lebih cepat',
+                            'D' => 'a++ tidak valid'
                         ],
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Konstanta adalah?',
+                        'question' => 'Operator == digunakan untuk?',
                         'options' => [
-                            'A' => 'Variabel yang dapat berubah',
-                            'B' => 'Nilai yang tetap tidak berubah',
-                            'C' => 'Fungsi matematika',
-                            'D' => 'Tipe data khusus'
+                            'A' => 'Memberikan nilai',
+                            'B' => 'Membandingkan kesamaan',
+                            'C' => 'Perkalian',
+                            'D' => 'Pembagian'
                         ],
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Scope variabel menentukan?',
+                        'question' => 'Operator logika && berarti?',
                         'options' => [
-                            'A' => 'Tipe data variabel',
-                            'B' => 'Nilai variabel',
-                            'C' => 'Area dimana variabel dapat diakses',
-                            'D' => 'Kecepatan akses variabel'
+                            'A' => 'OR',
+                            'B' => 'AND',
+                            'C' => 'NOT',
+                            'D' => 'XOR'
+                        ],
+                        'correct_answer' => 'B'
+                    ],
+                    [
+                        'question' => 'Operator logika || berarti?',
+                        'options' => [
+                            'A' => 'AND',
+                            'B' => 'OR',
+                            'C' => 'NOT',
+                            'D' => 'XOR'
+                        ],
+                        'correct_answer' => 'B'
+                    ],
+                    [
+                        'question' => 'Operator bitwise << digunakan untuk?',
+                        'options' => [
+                            'A' => 'Shift right',
+                            'B' => 'Shift left',
+                            'C' => 'AND',
+                            'D' => 'OR'
+                        ],
+                        'correct_answer' => 'B'
+                    ],
+                    [
+                        'question' => 'Hierarki operator tertinggi adalah?',
+                        'options' => [
+                            'A' => 'Penjumlahan (+)',
+                            'B' => 'Perkalian (*)',
+                            'C' => 'Kurung ()',
+                            'D' => 'Pembagian (/)'
                         ],
                         'correct_answer' => 'C'
                     ],
                     [
-                        'question' => 'Deklarasi variabel adalah?',
+                        'question' => 'Operator bitwise & (AND) akan bernilai 1 jika?',
                         'options' => [
-                            'A' => 'Menghapus variabel',
-                            'B' => 'Memberikan nilai pada variabel',
-                            'C' => 'Mendefinisikan nama dan tipe variabel',
-                            'D' => 'Mencetak variabel'
-                        ],
-                        'correct_answer' => 'C'
-                    ],
-                    [
-                        'question' => 'Inisialisasi variabel adalah?',
-                        'options' => [
-                            'A' => 'Mendeklarasikan variabel',
-                            'B' => 'Memberikan nilai awal pada variabel',
-                            'C' => 'Menghapus variabel',
-                            'D' => 'Mengubah tipe variabel'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'question' => 'Array adalah?',
-                        'options' => [
-                            'A' => 'Satu variabel untuk satu nilai',
-                            'B' => 'Kumpulan variabel dengan tipe yang sama',
-                            'C' => 'Fungsi matematika',
-                            'D' => 'Tipe data boolean'
+                            'A' => 'Salah satu operand bernilai 1',
+                            'B' => 'Semua operand bernilai 1',
+                            'C' => 'Semua operand bernilai 0',
+                            'D' => 'Tidak ada yang bernilai 1'
                         ],
                         'correct_answer' => 'B'
                     ]
                 ]
             ],
-            3 => [ // Struktur Kontrol
-                'title' => 'Quiz Struktur Kontrol',
-                'description' => 'Uji pemahaman Anda tentang if-else dan switch-case',
+            3 => [ // Operasi Kondisi
+                'title' => 'Quiz Operasi Kondisi',
+                'description' => 'Uji pemahaman Anda tentang percabangan dan pengambilan keputusan',
                 'questions' => [
                     [
                         'question' => 'Struktur kontrol if digunakan untuk?',
@@ -235,16 +235,6 @@ class QuizSeeder extends Seeder
                             'B' => 'Pengambilan keputusan',
                             'C' => 'Deklarasi variabel',
                             'D' => 'Input output'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'question' => 'Operator perbandingan == digunakan untuk?',
-                        'options' => [
-                            'A' => 'Memberikan nilai',
-                            'B' => 'Membandingkan kesamaan',
-                            'C' => 'Penjumlahan',
-                            'D' => 'Pengurangan'
                         ],
                         'correct_answer' => 'B'
                     ],
@@ -299,26 +289,6 @@ class QuizSeeder extends Seeder
                         'correct_answer' => 'C'
                     ],
                     [
-                        'question' => 'Operator logika && berarti?',
-                        'options' => [
-                            'A' => 'OR',
-                            'B' => 'AND',
-                            'C' => 'NOT',
-                            'D' => 'XOR'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'question' => 'Operator logika || berarti?',
-                        'options' => [
-                            'A' => 'AND',
-                            'B' => 'OR',
-                            'C' => 'NOT',
-                            'D' => 'XOR'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
                         'question' => 'Ternary operator (?:) adalah bentuk singkat dari?',
                         'options' => [
                             'A' => 'Switch-case',
@@ -327,15 +297,45 @@ class QuizSeeder extends Seeder
                             'D' => 'While loop'
                         ],
                         'correct_answer' => 'C'
+                    ],
+                    [
+                        'question' => 'Operator ! dalam kondisi berarti?',
+                        'options' => [
+                            'A' => 'AND',
+                            'B' => 'OR',
+                            'C' => 'NOT',
+                            'D' => 'EQUAL'
+                        ],
+                        'correct_answer' => 'C'
+                    ],
+                    [
+                        'question' => 'Kondisi if dapat menggunakan tipe data?',
+                        'options' => [
+                            'A' => 'Hanya boolean',
+                            'B' => 'Hanya integer',
+                            'C' => 'Boolean atau ekspresi yang menghasilkan boolean',
+                            'D' => 'Hanya string'
+                        ],
+                        'correct_answer' => 'C'
+                    ],
+                    [
+                        'question' => 'Switch-case dapat bekerja dengan tipe data?',
+                        'options' => [
+                            'A' => 'Hanya integer',
+                            'B' => 'Integer dan karakter',
+                            'C' => 'Hanya string',
+                            'D' => 'Hanya float'
+                        ],
+                        'correct_answer' => 'B'
                     ]
                 ]
             ],
-            4 => [ // Looping
-                'title' => 'Quiz Looping & Perulangan',
-                'description' => 'Uji pemahaman Anda tentang perulangan dalam pemrograman',
+            4 => [ // Perulangan
+                'title' => 'Quiz Perulangan (Looping)',
+                'description' => 'Uji pemahaman Anda tentang struktur perulangan',
                 'questions' => [
                     [
-                        'question' => 'Manakah yang merupakan jenis loop dalam pemrograman?',
+                        'question' => 'Manakah yang merupakan jenis loop dalam C++?',
                         'options' => [
                             'A' => 'for, while, do-while',
                             'B' => 'if, else, switch',
@@ -415,12 +415,12 @@ class QuizSeeder extends Seeder
                         'correct_answer' => 'A'
                     ],
                     [
-                        'question' => 'Manakah syntax for loop yang benar dalam C++?',
+                        'question' => 'Bagian mana dari for loop yang berisi kondisi?',
                         'options' => [
-                            'A' => 'for i = 1 to 10',
-                            'B' => 'for (int i=1; i<=10; i++)',
-                            'C' => 'for i in range(10)',
-                            'D' => 'for each i in array'
+                            'A' => 'for(kondisi; increment; inisialisasi)',
+                            'B' => 'for(inisialisasi; kondisi; increment)',
+                            'C' => 'for(increment; inisialisasi; kondisi)',
+                            'D' => 'for(inisialisasi; increment; kondisi)'
                         ],
                         'correct_answer' => 'B'
                     ],
@@ -437,8 +437,8 @@ class QuizSeeder extends Seeder
                 ]
             ],
             5 => [ // Array
-                'title' => 'Quiz Array',
-                'description' => 'Uji pemahaman Anda tentang array',
+                'title' => 'Quiz Array (Larik)',
+                'description' => 'Uji pemahaman Anda tentang array dan manipulasi data',
                 'questions' => [
                     [
                         'question' => 'Array adalah?',
@@ -456,7 +456,7 @@ class QuizSeeder extends Seeder
                             'A' => '1',
                             'B' => '0',
                             'C' => '-1',
-                            'D' => 'Tergantung bahasa'
+                            'D' => '10'
                         ],
                         'correct_answer' => 'B'
                     ],
@@ -491,14 +491,14 @@ class QuizSeeder extends Seeder
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Length atau size array menunjukkan?',
+                        'question' => 'Array dua dimensi dapat digunakan untuk merepresentasikan?',
                         'options' => [
-                            'A' => 'Jumlah elemen dalam array',
-                            'B' => 'Nilai maksimal array',
-                            'C' => 'Index terakhir array',
-                            'D' => 'Tipe data array'
+                            'A' => 'Satu baris data',
+                            'B' => 'Matrix atau tabel',
+                            'C' => 'Satu nilai saja',
+                            'D' => 'Boolean'
                         ],
-                        'correct_answer' => 'A'
+                        'correct_answer' => 'B'
                     ],
                     [
                         'question' => 'Array bounds error terjadi ketika?',
@@ -521,29 +521,29 @@ class QuizSeeder extends Seeder
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Linear search pada array adalah?',
+                        'question' => 'Untuk mengakses elemen array 2D arr[2][3], angka 2 menunjukkan?',
                         'options' => [
-                            'A' => 'Pencarian secara berurutan',
-                            'B' => 'Pencarian secara acak',
-                            'C' => 'Pencarian dengan sorting',
-                            'D' => 'Pencarian terbalik'
-                        ],
-                        'correct_answer' => 'A'
-                    ],
-                    [
-                        'question' => 'Matrix adalah contoh dari?',
-                        'options' => [
-                            'A' => 'Array 1 dimensi',
-                            'B' => 'Array 2 dimensi',
-                            'C' => 'Array 3 dimensi',
-                            'D' => 'Bukan array'
+                            'A' => 'Kolom ke-2',
+                            'B' => 'Baris ke-2',
+                            'C' => 'Total elemen',
+                            'D' => 'Tipe data'
                         ],
                         'correct_answer' => 'B'
+                    ],
+                    [
+                        'question' => 'Ukuran array harus ditentukan pada saat?',
+                        'options' => [
+                            'A' => 'Kompilasi',
+                            'B' => 'Runtime',
+                            'C' => 'Setelah program selesai',
+                            'D' => 'Tidak perlu ditentukan'
+                        ],
+                        'correct_answer' => 'A'
                     ]
                 ]
             ],
             6 => [ // Function
-                'title' => 'Quiz Function',
+                'title' => 'Quiz Function (Fungsi)',
                 'description' => 'Uji pemahaman Anda tentang fungsi dalam pemrograman',
                 'questions' => [
                     [
@@ -577,16 +577,6 @@ class QuizSeeder extends Seeder
                         'correct_answer' => 'C'
                     ],
                     [
-                        'question' => 'Function overloading adalah?',
-                        'options' => [
-                            'A' => 'Function yang error',
-                            'B' => 'Function dengan nama sama tapi parameter berbeda',
-                            'C' => 'Function yang terlalu panjang',
-                            'D' => 'Function tanpa parameter'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
                         'question' => 'Void function berarti?',
                         'options' => [
                             'A' => 'Function yang mengembalikan nilai',
@@ -607,24 +597,14 @@ class QuizSeeder extends Seeder
                         'correct_answer' => 'A'
                     ],
                     [
-                        'question' => 'Local variable dalam function?',
+                        'question' => 'Prototype function digunakan untuk?',
                         'options' => [
-                            'A' => 'Dapat diakses dari mana saja',
-                            'B' => 'Hanya dapat diakses dalam function tersebut',
-                            'C' => 'Tidak dapat digunakan',
-                            'D' => 'Selalu bernilai 0'
+                            'A' => 'Menghapus function',
+                            'B' => 'Mendeklarasikan function sebelum didefinisikan',
+                            'C' => 'Memanggil function',
+                            'D' => 'Menjalankan function'
                         ],
                         'correct_answer' => 'B'
-                    ],
-                    [
-                        'question' => 'Function prototype adalah?',
-                        'options' => [
-                            'A' => 'Deklarasi function tanpa implementasi',
-                            'B' => 'Function yang sudah jadi',
-                            'C' => 'Function yang error',
-                            'D' => 'Function yang lambat'
-                        ],
-                        'correct_answer' => 'A'
                     ],
                     [
                         'question' => 'Pass by value berarti?',
@@ -645,12 +625,32 @@ class QuizSeeder extends Seeder
                             'D' => 'Tidak mengirim apa-apa'
                         ],
                         'correct_answer' => 'B'
+                    ],
+                    [
+                        'question' => 'Local variable dalam function?',
+                        'options' => [
+                            'A' => 'Dapat diakses dari mana saja',
+                            'B' => 'Hanya dapat diakses dalam function tersebut',
+                            'C' => 'Tidak dapat digunakan',
+                            'D' => 'Selalu bernilai 0'
+                        ],
+                        'correct_answer' => 'B'
+                    ],
+                    [
+                        'question' => 'Keuntungan menggunakan function adalah?',
+                        'options' => [
+                            'A' => 'Program lebih lambat',
+                            'B' => 'Program lebih terstruktur dan mengurangi duplikasi kode',
+                            'C' => 'Program lebih besar',
+                            'D' => 'Program lebih sulit dibaca'
+                        ],
+                        'correct_answer' => 'B'
                     ]
                 ]
             ],
             7 => [ // Pointer
                 'title' => 'Quiz Pointer',
-                'description' => 'Uji pemahaman Anda tentang pointer',
+                'description' => 'Uji pemahaman Anda tentang pointer dan memory management',
                 'questions' => [
                     [
                         'question' => 'Pointer adalah?',
@@ -673,12 +673,12 @@ class QuizSeeder extends Seeder
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Operator * digunakan untuk?',
+                        'question' => 'Operator * pada pointer digunakan untuk?',
                         'options' => [
                             'A' => 'Mendapatkan alamat',
                             'B' => 'Mendapatkan nilai yang ditunjuk pointer',
                             'C' => 'Perkalian',
-                            'D' => 'Deklarasi pointer'
+                            'D' => 'Deklarasi variabel biasa'
                         ],
                         'correct_answer' => 'B'
                     ],
@@ -693,32 +693,22 @@ class QuizSeeder extends Seeder
                         'correct_answer' => 'A'
                     ],
                     [
+                        'question' => 'Pointer void adalah?',
+                        'options' => [
+                            'A' => 'Pointer yang rusak',
+                            'B' => 'Pointer yang dapat menunjuk ke sembarang tipe data',
+                            'C' => 'Pointer yang kosong',
+                            'D' => 'Pointer yang tidak bisa digunakan'
+                        ],
+                        'correct_answer' => 'B'
+                    ],
+                    [
                         'question' => 'Dangling pointer adalah?',
                         'options' => [
                             'A' => 'Pointer yang menunjuk ke memori yang sudah dibebaskan',
                             'B' => 'Pointer yang NULL',
                             'C' => 'Pointer yang valid',
                             'D' => 'Pointer yang baru'
-                        ],
-                        'correct_answer' => 'A'
-                    ],
-                    [
-                        'question' => 'Pointer arithmetic memungkinkan?',
-                        'options' => [
-                            'A' => 'Operasi matematika pada alamat',
-                            'B' => 'Operasi logika',
-                            'C' => 'Operasi string',
-                            'D' => 'Operasi boolean'
-                        ],
-                        'correct_answer' => 'A'
-                    ],
-                    [
-                        'question' => 'Double pointer (**) adalah?',
-                        'options' => [
-                            'A' => 'Pointer ke pointer',
-                            'B' => 'Pointer yang error',
-                            'C' => 'Pointer yang ganda nilainya',
-                            'D' => 'Pointer yang lambat'
                         ],
                         'correct_answer' => 'A'
                     ],
@@ -733,128 +723,138 @@ class QuizSeeder extends Seeder
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Memory leak terjadi ketika?',
+                        'question' => 'Double pointer (**) adalah?',
                         'options' => [
-                            'A' => 'Menggunakan pointer',
-                            'B' => 'Tidak membebaskan memori yang dialokasi',
-                            'C' => 'Pointer terlalu banyak',
-                            'D' => 'Komputer lambat'
+                            'A' => 'Pointer ke pointer',
+                            'B' => 'Pointer yang error',
+                            'C' => 'Pointer yang ganda nilainya',
+                            'D' => 'Pointer yang lambat'
                         ],
-                        'correct_answer' => 'B'
+                        'correct_answer' => 'A'
                     ],
                     [
-                        'question' => 'malloc() digunakan untuk?',
+                        'question' => 'Pointer arithmetic memungkinkan?',
                         'options' => [
-                            'A' => 'Membebaskan memori',
-                            'B' => 'Mengalokasikan memori dinamis',
-                            'C' => 'Mendeklarasikan pointer',
-                            'D' => 'Menghitung ukuran pointer'
+                            'A' => 'Operasi matematika pada alamat',
+                            'B' => 'Operasi logika',
+                            'C' => 'Operasi string',
+                            'D' => 'Operasi boolean'
+                        ],
+                        'correct_answer' => 'A'
+                    ],
+                    [
+                        'question' => 'Keuntungan menggunakan pointer adalah?',
+                        'options' => [
+                            'A' => 'Program lebih lambat',
+                            'B' => 'Efisiensi memori dan akses langsung ke hardware',
+                            'C' => 'Program lebih sulit',
+                            'D' => 'Tidak ada keuntungan'
                         ],
                         'correct_answer' => 'B'
                     ]
                 ]
             ],
-            8 => [ // Struktur Data
-                'title' => 'Quiz Struktur Data',
-                'description' => 'Uji pemahaman Anda tentang struct dan union',
+            8 => [ // Pengelolaan File
+                'title' => 'Quiz Pengelolaan File',
+                'description' => 'Uji pemahaman Anda tentang operasi file dalam C++',
                 'questions' => [
                     [
-                        'question' => 'Struct adalah?',
+                        'question' => 'Fungsi untuk membuka file dalam C++ adalah?',
                         'options' => [
-                            'A' => 'Kumpulan variabel dengan tipe yang sama',
-                            'B' => 'Kumpulan variabel dengan tipe berbeda',
-                            'C' => 'Fungsi khusus',
-                            'D' => 'Array multidimensi'
+                            'A' => 'openfile()',
+                            'B' => 'fopen()',
+                            'C' => 'file_open()',
+                            'D' => 'open()'
                         ],
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Member struct diakses dengan operator?',
+                        'question' => 'Fungsi untuk menutup file adalah?',
                         'options' => [
-                            'A' => '->',
-                            'B' => '.',
-                            'C' => '*',
-                            'D' => '&'
+                            'A' => 'closefile()',
+                            'B' => 'file_close()',
+                            'C' => 'fclose()',
+                            'D' => 'close()'
+                        ],
+                        'correct_answer' => 'C'
+                    ],
+                    [
+                        'question' => 'Mode "r" dalam fopen() digunakan untuk?',
+                        'options' => [
+                            'A' => 'Menulis file',
+                            'B' => 'Membaca file',
+                            'C' => 'Menambah data',
+                            'D' => 'Menghapus file'
                         ],
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Union berbeda dengan struct karena?',
+                        'question' => 'Mode "w" dalam fopen() akan?',
                         'options' => [
-                            'A' => 'Union lebih cepat',
-                            'B' => 'Union menggunakan memori yang sama untuk semua member',
-                            'C' => 'Union tidak bisa memiliki member',
-                            'D' => 'Tidak ada perbedaan'
+                            'A' => 'Membaca file yang ada',
+                            'B' => 'Membuat file baru atau menimpa file yang ada',
+                            'C' => 'Menambah data ke akhir file',
+                            'D' => 'Error jika file tidak ada'
                         ],
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Typedef digunakan untuk?',
+                        'question' => 'Mode "a" dalam fopen() digunakan untuk?',
                         'options' => [
-                            'A' => 'Membuat tipe data baru',
-                            'B' => 'Menghapus tipe data',
-                            'C' => 'Mengubah nilai variabel',
-                            'D' => 'Mendeklarasikan fungsi'
+                            'A' => 'Membaca file',
+                            'B' => 'Menulis file dari awal',
+                            'C' => 'Menambah data ke akhir file',
+                            'D' => 'Menghapus file'
                         ],
-                        'correct_answer' => 'A'
+                        'correct_answer' => 'C'
                     ],
                     [
-                        'question' => 'Self-referential structure adalah?',
+                        'question' => 'Fungsi putc() digunakan untuk?',
                         'options' => [
-                            'A' => 'Struct yang error',
-                            'B' => 'Struct yang memiliki pointer ke struct yang sama',
-                            'C' => 'Struct yang kosong',
-                            'D' => 'Struct yang besar'
-                        ],
-                        'correct_answer' => 'B'
-                    ],
-                    [
-                        'question' => 'Linked list menggunakan konsep?',
-                        'options' => [
-                            'A' => 'Array',
-                            'B' => 'Self-referential structure',
-                            'C' => 'Union',
-                            'D' => 'Pointer arithmetic'
+                            'A' => 'Membaca karakter dari file',
+                            'B' => 'Menulis karakter ke file',
+                            'C' => 'Menghapus karakter',
+                            'D' => 'Mencari karakter'
                         ],
                         'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Enum adalah?',
+                        'question' => 'Fungsi getc() digunakan untuk?',
                         'options' => [
-                            'A' => 'Kumpulan konstanta bernama',
-                            'B' => 'Tipe data numerik',
-                            'C' => 'Fungsi khusus',
-                            'D' => 'Array karakter'
+                            'A' => 'Menulis karakter ke file',
+                            'B' => 'Membaca karakter dari file',
+                            'C' => 'Menghapus karakter',
+                            'D' => 'Menghitung karakter'
                         ],
-                        'correct_answer' => 'A'
+                        'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Bit field dalam struct digunakan untuk?',
+                        'question' => 'Perbedaan file teks dan file biner adalah?',
                         'options' => [
-                            'A' => 'Menghemat memori',
-                            'B' => 'Mempercepat akses',
-                            'C' => 'Memperbesar ukuran',
-                            'D' => 'Tidak ada fungsi khusus'
+                            'A' => 'Tidak ada perbedaan',
+                            'B' => 'File teks menyimpan dalam bentuk karakter, file biner dalam bentuk biner',
+                            'C' => 'File teks lebih cepat',
+                            'D' => 'File biner hanya untuk angka'
                         ],
-                        'correct_answer' => 'A'
+                        'correct_answer' => 'B'
                     ],
                     [
-                        'question' => 'Nested structure adalah?',
+                        'question' => 'Fungsi feof() digunakan untuk?',
                         'options' => [
-                            'A' => 'Struct di dalam struct',
-                            'B' => 'Struct yang error',
-                            'C' => 'Struct yang kosong',
-                            'D' => 'Struct yang besar'
+                            'A' => 'Membuka file',
+                            'B' => 'Menutup file',
+                            'C' => 'Mendeteksi akhir file',
+                            'D' => 'Menulis ke file'
                         ],
-                        'correct_answer' => 'A'
+                        'correct_answer' => 'C'
                     ],
                     [
-                        'question' => 'Array of structures berarti?',
+                        'question' => 'Fungsi fprintf() digunakan untuk?',
                         'options' => [
-                            'A' => 'Struct yang berisi array',
-                            'B' => 'Array yang elemennya berupa struct',
-                            'C' => 'Array multidimensi',
-                            'D' => 'Struct multidimensi'
+                            'A' => 'Membaca data terformat dari file',
+                            'B' => 'Menulis data terformat ke file',
+                            'C' => 'Menutup file',
+                            'D' => 'Membuka file'
                         ],
                         'correct_answer' => 'B'
                     ]
