@@ -9,7 +9,10 @@ use App\Http\Controllers\Student\CpmkController;
 use App\Http\Controllers\Student\LearningObjectiveController;
 use App\Http\Controllers\QuizController;
 use App\Http\Controllers\LeaderboardController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\CompilerController;
+use App\Http\Controllers\Instructor\InstructorDashboardController;
+use App\Http\Controllers\Instructor\ModuleController as InstructorModuleController;
 use App\Http\Controllers\Instructor\QuizController as InstructorQuizController;
 use Inertia\Inertia;
 
@@ -29,15 +32,9 @@ Route::get('/', function () {
 */
 Route::middleware(['auth', 'verified'])->group(function () {
     // Dashboard - redirect based on role
-    Route::get('/dashboard', function () {
-        $user = auth()->user();
+    Route::get('/dashboard', [DashboardController::class, 'index'])
+        ->name('dashboard');
 
-        if ($user->hasRole('instructor')) {
-            return redirect()->route('instructor.dashboard');
-        }
-
-        return Inertia::render('dashboard');
-    })->name('dashboard');
 
     // Compiler - accessible to all authenticated users
     Route::get('/compiler', function () {
@@ -116,57 +113,135 @@ Route::middleware(['auth', 'role:student'])->group(function () {
 | Instructor Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'role:instructor'])->prefix('instructor')->name('instructor.')->group(function () {
+
+use App\Http\Controllers\Instructor\ModuleComponentController;
+use App\Http\Controllers\Instructor\ClassRoomController;
+use App\Http\Controllers\Instructor\PraktikumController;
+
+Route::middleware(['auth', 'role:instructor'])
+    ->prefix('instructor')
+    ->name('instructor.')
+    ->group(function () {
 
     // Dashboard
-    Route::get('/dashboard', function () {
-        return Inertia::render('Instructor/InsDashboard');
-    })->name('dashboard');
+    Route::get('/dashboard', [InstructorDashboardController::class, 'index'])
+        ->name('dashboard');
 
-    // Praktikum Management
-    Route::get('/praktikum-manage', function () {
-        return Inertia::render('Instructor/praktikum');
-    })->name('praktikum-manage');
+    /*
+    |--------------------------------------------------------------------------
+    | Module Management
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('modules')->name('modules.')->group(function () {
 
-    // Quiz Management
-    Route::prefix('quiz')->name('quiz.')->group(function () {
-        // List & Analytics (specific routes first)
-        Route::get('/results/data', [InstructorQuizController::class, 'results'])
-            ->name('results');
-        Route::get('/analytics/data', [InstructorQuizController::class, 'analytics'])
-            ->name('analytics');
+        Route::get('/', [InstructorModuleController::class, 'index'])->name('index');
+        Route::get('/create', [InstructorModuleController::class, 'create'])->name('create');
+        Route::get('/{id}/edit', [InstructorModuleController::class, 'edit'])->name('edit');
 
-        // Index
-        Route::get('/', [InstructorQuizController::class, 'index'])
+        Route::post('/', [InstructorModuleController::class, 'store'])->name('store');
+        Route::put('/{id}', [InstructorModuleController::class, 'update'])->name('update');
+        Route::delete('/{id}', [InstructorModuleController::class, 'destroy'])->name('destroy');
+
+        Route::get('/{id}', [InstructorModuleController::class, 'show'])->name('show');
+
+        // Extra
+        Route::post('/{id}/toggle-active', [InstructorModuleController::class, 'toggleActive'])
+            ->name('toggle-active');
+        Route::post('/reorder', [InstructorModuleController::class, 'reorder'])
+            ->name('reorder');
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Module Components (CPMK / Learning Objectives / Material / Enrichment)
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('modules/{module}')->name('modules.')->group(function () {
+
+        // CPMK
+        Route::post('/cpmk', [ModuleComponentController::class, 'storeCpmk'])->name('cpmk.store');
+        Route::put('/cpmk/{cpmk}', [ModuleComponentController::class, 'updateCpmk'])->name('cpmk.update');
+        Route::delete('/cpmk/{cpmk}', [ModuleComponentController::class, 'destroyCpmk'])->name('cpmk.destroy');
+
+        // Learning Objectives
+        Route::post('/learning-objective', [ModuleComponentController::class, 'storeLearningObjective'])->name('learning-objective.store');
+        Route::put('/learning-objective/{objective}', [ModuleComponentController::class, 'updateLearningObjective'])->name('learning-objective.update');
+        Route::delete('/learning-objective/{objective}', [ModuleComponentController::class, 'destroyLearningObjective'])->name('learning-objective.destroy');
+
+        // Material
+        Route::post('/material', [ModuleComponentController::class, 'storeMaterial'])->name('material.store');
+        Route::put('/material/{material}', [ModuleComponentController::class, 'updateMaterial'])->name('material.update');
+        Route::delete('/material/{material}', [ModuleComponentController::class, 'destroyMaterial'])->name('material.destroy');
+
+        // Enrichment
+        Route::post('/enrichment', [ModuleComponentController::class, 'storeEnrichment'])->name('enrichment.store');
+        Route::put('/enrichment/{enrichment}', [ModuleComponentController::class, 'updateEnrichment'])->name('enrichment.update');
+        Route::delete('/enrichment/{enrichment}', [ModuleComponentController::class, 'destroyEnrichment'])->name('enrichment.destroy');
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Class Management
+    |--------------------------------------------------------------------------
+    */
+    Route::resource('classes', ClassRoomController::class);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Praktikum
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('praktikum')->name('praktikum.')->group(function () {
+        // Main praktikum management page
+        Route::get('/', [PraktikumController::class, 'index'])
             ->name('index');
 
-        // CRUD operations
-        Route::post('/', [InstructorQuizController::class, 'store'])
+        // Assignment CRUD
+        Route::post('/', [PraktikumController::class, 'store'])
             ->name('store');
-        Route::get('/{quiz}', [InstructorQuizController::class, 'show'])
-            ->name('show');
-        Route::put('/{quiz}', [InstructorQuizController::class, 'update'])
+        Route::put('/{id}', [PraktikumController::class, 'update'])
             ->name('update');
-        Route::delete('/{quiz}', [InstructorQuizController::class, 'destroy'])
+        Route::delete('/{id}', [PraktikumController::class, 'destroy'])
             ->name('destroy');
 
-        // Additional actions
-        Route::patch('/{quiz}/toggle-status', [InstructorQuizController::class, 'toggleStatus'])
-            ->name('toggle-status');
-        Route::get('/result/{attempt}', [InstructorQuizController::class, 'resultDetail'])
-            ->name('result-detail');
+        // Submissions
+        Route::get('/submissions/{id}/preview', [PraktikumController::class, 'previewSubmission'])
+            ->name('submissions.preview');
+        Route::get('/submissions', [PraktikumController::class, 'submissions'])
+            ->name('submissions');
+        Route::post('/submissions/{id}/grade', [PraktikumController::class, 'gradeSubmission'])
+            ->name('submissions.grade');
+        Route::get('/submissions/{id}/download', [PraktikumController::class, 'downloadSubmission'])
+            ->name('submissions.download');
+        Route::get('/assignments/{id}/download-all', [PraktikumController::class, 'downloadAllSubmissions'])
+            ->name('assignments.download-all');
+
+        // Analytics
+        Route::get('/analytics', [PraktikumController::class, 'analytics'])
+            ->name('analytics');
     });
 
-    // Module Management (if needed)
-    Route::prefix('modules')->name('modules.')->group(function () {
-        // Add instructor module management routes here
-    });
+    /*
+    |--------------------------------------------------------------------------
+    | Quiz Management
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('quiz')->name('quiz.')->group(function () {
 
-    // Material Management (if needed)
-    Route::prefix('materials')->name('materials.')->group(function () {
-        // Add instructor material management routes here
+        Route::get('/results/data', [InstructorQuizController::class, 'results'])->name('results');
+        Route::get('/analytics/data', [InstructorQuizController::class, 'analytics'])->name('analytics');
+
+        Route::get('/', [InstructorQuizController::class, 'index'])->name('index');
+        Route::post('/', [InstructorQuizController::class, 'store'])->name('store');
+        Route::get('/{quiz}', [InstructorQuizController::class, 'show'])->name('show');
+        Route::put('/{quiz}', [InstructorQuizController::class, 'update'])->name('update');
+        Route::delete('/{quiz}', [InstructorQuizController::class, 'destroy'])->name('destroy');
+
+        Route::patch('/{quiz}/toggle-status', [InstructorQuizController::class, 'toggleStatus'])->name('toggle-status');
+        Route::get('/result/{attempt}', [InstructorQuizController::class, 'resultDetail'])->name('result-detail');
     });
 });
+
 
 /*
 |--------------------------------------------------------------------------

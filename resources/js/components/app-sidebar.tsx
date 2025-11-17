@@ -30,12 +30,12 @@ const mainNavItems: NavItem[] = [
     },
     {
         title: 'Quiz',
-        href: '/instructor/quiz-manage',
+        href: '/instructor/quiz',
         icon: FilePenLine,
     },
     {
         title: 'Praktikum',
-        href: '/instructor/praktikum-manage',
+        href: '/instructor/praktikum',
         icon: FilePenLine,
     },
 ];

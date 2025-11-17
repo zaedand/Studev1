@@ -17,12 +17,10 @@ class Module extends Model
         'is_active',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'is_active' => 'boolean',
-        ];
-    }
+    protected $casts = [
+        'is_active' => 'boolean',
+        'order_number' => 'integer',
+    ];
 
     // Relationships
     public function materials()
@@ -43,6 +41,16 @@ class Module extends Model
     public function assignments()
     {
         return $this->hasMany(Assignment::class);
+    }
+
+    public function cpmks()
+    {
+        return $this->hasMany(ModuleCpmk::class);
+    }
+
+    public function learningObjectives()
+    {
+        return $this->hasMany(ModuleLearningObjective::class);
     }
 
     // Scopes

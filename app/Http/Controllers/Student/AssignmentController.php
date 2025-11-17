@@ -146,7 +146,7 @@ class AssignmentController extends Controller
             $submission = AssignmentSubmission::create([
                 'assignment_id' => $assignment->id,
                 'user_id' => $user->id,
-                'file_name' => $file->getClientOriginalName(),
+                'file_name' => $fileName, // FIX: sesuai nama file tersimpan
                 'file_path' => $filePath,
                 'file_size' => $file->getSize(),
                 'notes' => $request->notes,
@@ -154,6 +154,7 @@ class AssignmentController extends Controller
                 'submitted_at' => $submittedAt,
                 'points_earned' => $pointsEarned,
             ]);
+
 
             // ✅ Create progress record
             UserProgress::updateOrCreate(
