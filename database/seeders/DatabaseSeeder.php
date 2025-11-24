@@ -14,6 +14,7 @@ class DatabaseSeeder extends Seeder
             ClassSeeder::class,
             QuizSeeder::class,
             ModuleContentSeeder::class,
+            ModuleCpmkAndLearningObjectiveSeeder::class,
         ]);
     }
 }

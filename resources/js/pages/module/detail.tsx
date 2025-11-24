@@ -651,6 +651,52 @@ export default function ModuleDetail() {
         </div>
     ), [moduleContent.materi, state.completedSections.materi, state.loading, moduleData.color, handleDownload, handleMaterialComplete]);
 
+        const enrichmentId = moduleData?.enrichment_id ?? moduleData?.id;
+
+    // Memoized handlers
+    const handleEnrichmentComplete = useCallback(async (itemId: number, itemType: 'video' | 'link', moduleId: number) => {
+        if (state.loading) return;
+
+        setState(prev => ({ ...prev, loading: true }));
+
+        router.post(
+            `/enrichments/${itemId}/complete`,
+            {
+                type: itemType,
+                module_id: moduleId,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: (page) => {
+                    const response = page.props.flash as any;
+                    if (response?.success) {
+                        setState(prev => ({
+                            ...prev,
+                            userPoints: response.total_points || prev.userPoints,
+                            completedVideos:
+                                itemType === 'video'
+                                    ? [...prev.completedVideos, itemId]
+                                    : prev.completedVideos,
+                            completedLinks:
+                                itemType === 'link'
+                                    ? [...prev.completedLinks, itemId]
+                                    : prev.completedLinks,
+                        }));
+                    }
+                    // Reload untuk update progress di header
+                    router.reload({ only: ['moduleData', 'moduleContent'] });
+                },
+                onError: (errors) => {
+                    console.error('Error:', errors);
+                    alert('Terjadi kesalahan. Silakan coba lagi.');
+                },
+                onFinish: () => {
+                    setState(prev => ({ ...prev, loading: false }));
+                }
+            }
+        );
+    }, [state.loading]);
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${moduleData.title} - Module Detail`} />

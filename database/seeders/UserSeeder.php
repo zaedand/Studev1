@@ -20,7 +20,7 @@ class UserSeeder extends Seeder
 
         // Instructor
         User::create([
-            'name' => 'Dr. John Smith',
+            'name' => 'Dr. Rama',
             'email' => 'instructor@example.com',
             'role' => 'instructor',
             'password' => Hash::make('password'),
@@ -28,7 +28,7 @@ class UserSeeder extends Seeder
 
         // Students
         User::create([
-            'name' => 'Alice Johnson',
+            'name' => 'Alice Putri',
             'email' => 'alice@example.com',
             'nim' => '2024001',
             'role' => 'student',
@@ -36,7 +36,7 @@ class UserSeeder extends Seeder
         ]);
 
         User::create([
-            'name' => 'Bob Wilson',
+            'name' => 'Bobby Kertonegoro',
             'email' => 'bob@example.com',
             'nim' => '2024002',
             'role' => 'student',

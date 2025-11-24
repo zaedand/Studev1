@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { router } from '@inertiajs/react';
 import {
     Clock,
     ChevronLeft,
@@ -18,7 +19,6 @@ interface Question {
         C: string;
         D: string;
     };
-    correct_answer: string;
 }
 
 interface QuizInterfaceProps {
@@ -43,7 +43,21 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
     const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
     const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
 
+    // Memoized calculations untuk performa
+    const answeredCount = useMemo(() => Object.keys(answers).length, [answers]);
+    const isAllAnswered = useMemo(() => answeredCount === questions.length, [answeredCount, questions.length]);
+    const progressPercentage = useMemo(() => (answeredCount / questions.length) * 100, [answeredCount, questions.length]);
+
+    const unansweredQuestions = useMemo(() => {
+        return questions
+            .filter(q => !answers[q.id])
+            .map((_, index) => index + 1);
+    }, [questions, answers]);
+
+    // Timer dengan cleanup
     useEffect(() => {
+        if (timeLeft <= 0 || isSubmitting) return;
+
         const timer = setInterval(() => {
             setTimeLeft((prev) => {
                 if (prev <= 1) {
@@ -55,24 +69,28 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
         }, 1000);
 
         return () => clearInterval(timer);
-    }, []);
+    }, [timeLeft, isSubmitting]);
 
+    // Prevent navigation during quiz
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            e.preventDefault();
-            e.returnValue = '';
+            if (!isSubmitting) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
         };
 
-        const handlePopState = () => {
+        const handlePopState = (e: PopStateEvent) => {
             if (!isSubmitting) {
+                e.preventDefault();
                 alert('Quiz sedang berlangsung! Gunakan tombol submit untuk menyelesaikan quiz.');
-                history.pushState(null, '', location.href);
+                window.history.pushState(null, '', window.location.href);
             }
         };
 
         window.addEventListener('beforeunload', handleBeforeUnload);
         window.addEventListener('popstate', handlePopState);
-        history.pushState(null, '', location.href);
+        window.history.pushState(null, '', window.location.href);
 
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload);
@@ -80,43 +98,31 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
         };
     }, [isSubmitting]);
 
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
+    // Format time dengan useMemo untuk performa
+    const formattedTime = useMemo(() => {
+        const mins = Math.floor(timeLeft / 60);
+        const secs = timeLeft % 60;
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    };
+    }, [timeLeft]);
 
-    const handleAnswerChange = (questionId: number, answer: string) => {
+    const timeColor = useMemo(() => {
+        if (timeLeft > 300) return 'text-green-600';
+        if (timeLeft > 60) return 'text-yellow-600';
+        return 'text-red-600';
+    }, [timeLeft]);
+
+    // Handlers dengan useCallback untuk prevent re-render
+    const handleAnswerChange = useCallback((questionId: number, answer: string) => {
         setAnswers(prev => ({
             ...prev,
             [questionId]: answer
         }));
-    };
+    }, []);
 
-    const getAnsweredCount = () => {
-        return Object.keys(answers).length;
-    };
-
-    const isQuestionAnswered = (questionId: number) => {
-        return answers.hasOwnProperty(questionId);
-    };
-
-    const isAllQuestionsAnswered = () => {
-        return getAnsweredCount() === questions.length;
-    };
-
-    const getUnansweredQuestions = () => {
-        return questions
-            .map((q, index) => ({ id: q.id, index }))
-            .filter(q => !isQuestionAnswered(q.id))
-            .map(q => q.index + 1);
-    };
-
-    const handleSubmit = (isAutoSubmit = false) => {
+    const handleSubmit = useCallback((isAutoSubmit = false) => {
         if (isSubmitting) return;
 
-        // Cek apakah semua soal sudah dijawab (kecuali auto submit saat waktu habis)
-        if (!isAutoSubmit && !isAllQuestionsAnswered()) {
+        if (!isAutoSubmit && !isAllAnswered) {
             setShowIncompleteWarning(true);
             return;
         }
@@ -130,36 +136,41 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
 
         const timeTaken = (quizConfig.time_limit * 60) - timeLeft;
 
-        // Simulate submit - ganti dengan router.post untuk implementasi asli
-        console.log('Submitting quiz...', {
+        router.post(`/module/${module.id}/quiz/submit`, {
             session_id: quizConfig.session_id,
             answers,
             time_taken: timeTaken,
+        }, {
+            preserveState: false,
+            preserveScroll: false,
+            onError: (errors) => {
+                console.error("Submit error:", errors);
+                setIsSubmitting(false);
+                alert('Terjadi kesalahan saat submit. Silakan coba lagi.');
+            },
         });
+    }, [isSubmitting, isAllAnswered, timeLeft, quizConfig, module.id, answers]);
 
-        setTimeout(() => {
-            alert('Quiz berhasil di-submit!');
-            setIsSubmitting(false);
-        }, 1000);
-    };
-
-    const confirmSubmit = () => {
+    const confirmSubmit = useCallback(() => {
         setShowConfirmSubmit(false);
         handleSubmit(true);
-    };
+    }, [handleSubmit]);
 
-    const getTimeLeftColor = () => {
-        if (timeLeft > 300) return 'text-green-600';
-        if (timeLeft > 60) return 'text-yellow-600';
-        return 'text-red-600';
-    };
+    const goToPrevious = useCallback(() => {
+        setCurrentQuestion(prev => Math.max(0, prev - 1));
+    }, []);
+
+    const goToNext = useCallback(() => {
+        setCurrentQuestion(prev => Math.min(questions.length - 1, prev + 1));
+    }, [questions.length]);
 
     const currentQ = questions[currentQuestion];
+    const isQuestionAnswered = answers[currentQ.id] !== undefined;
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
             <div className="max-w-6xl mx-auto p-4">
-                {/* Header with Timer */}
+                {/* Header - Sticky */}
                 <div className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-6 border border-gray-200 dark:border-gray-700 sticky top-4 z-10 shadow-lg">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
@@ -181,32 +192,32 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
                             <div className="text-center">
                                 <p className="text-sm text-gray-600 dark:text-gray-400">Dijawab</p>
                                 <p className={`text-lg font-semibold ${
-                                    isAllQuestionsAnswered()
+                                    isAllAnswered
                                         ? 'text-green-600 dark:text-green-400'
                                         : 'text-gray-900 dark:text-white'
                                 }`}>
-                                    {getAnsweredCount()}/{questions.length}
+                                    {answeredCount}/{questions.length}
                                 </p>
                             </div>
 
                             {/* Timer */}
                             <div className="flex items-center gap-2">
-                                <Clock className={`h-5 w-5 ${getTimeLeftColor()}`} />
-                                <span className={`text-xl font-bold ${getTimeLeftColor()}`}>
-                                    {formatTime(timeLeft)}
+                                <Clock className={`h-5 w-5 ${timeColor}`} />
+                                <span className={`text-xl font-bold ${timeColor}`}>
+                                    {formattedTime}
                                 </span>
                             </div>
 
                             {/* Submit Button */}
                             <button
                                 onClick={() => handleSubmit()}
-                                disabled={isSubmitting || !isAllQuestionsAnswered()}
+                                disabled={isSubmitting || !isAllAnswered}
                                 className={`py-2 px-4 rounded-lg font-semibold transition-all ${
-                                    isAllQuestionsAnswered()
+                                    isAllAnswered
                                         ? 'bg-green-600 hover:bg-green-700 text-white'
                                         : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-500 cursor-not-allowed'
-                                } disabled:bg-gray-400 disabled:cursor-not-allowed`}
-                                title={!isAllQuestionsAnswered() ? 'Jawab semua soal terlebih dahulu' : ''}
+                                } disabled:bg-gray-400`}
+                                title={!isAllAnswered ? 'Jawab semua soal terlebih dahulu' : ''}
                             >
                                 {isSubmitting ? 'Submitting...' : 'Submit Quiz'}
                             </button>
@@ -218,39 +229,39 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
                         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                             <div
                                 className={`h-2 rounded-full transition-all duration-300 ${
-                                    isAllQuestionsAnswered() ? 'bg-green-500' : 'bg-blue-500'
+                                    isAllAnswered ? 'bg-green-500' : 'bg-blue-500'
                                 }`}
-                                style={{ width: `${(getAnsweredCount() / questions.length) * 100}%` }}
-                            ></div>
+                                style={{ width: `${progressPercentage}%` }}
+                            />
                         </div>
                     </div>
 
-                    {/* Warning jika belum lengkap */}
-                    {!isAllQuestionsAnswered() && (
+                    {/* Warning */}
+                    {!isAllAnswered && (
                         <div className="mt-3 flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
                             <AlertTriangle className="h-4 w-4" />
-                            <span>Masih ada {questions.length - getAnsweredCount()} soal yang belum dijawab</span>
+                            <span>Masih ada {questions.length - answeredCount} soal yang belum dijawab</span>
                         </div>
                     )}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                    {/* Question Navigation Sidebar */}
+                    {/* Navigation Sidebar */}
                     <div className="lg:col-span-1">
                         <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 sticky top-32">
                             <h3 className="font-semibold text-gray-900 dark:text-white mb-4">
                                 Navigasi Soal
                             </h3>
                             <div className="grid grid-cols-5 lg:grid-cols-3 gap-2">
-                                {questions.map((_, index) => (
+                                {questions.map((q, index) => (
                                     <button
-                                        key={index}
+                                        key={q.id}
                                         onClick={() => setCurrentQuestion(index)}
                                         className={`
                                             w-10 h-10 rounded-lg font-semibold text-sm transition-all duration-200
                                             ${currentQuestion === index
                                                 ? 'bg-blue-600 text-white shadow-lg'
-                                                : isQuestionAnswered(questions[index].id)
+                                                : answers[q.id]
                                                     ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-700'
                                                     : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                                             }
@@ -264,15 +275,15 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
                             {/* Legend */}
                             <div className="mt-4 space-y-2 text-sm">
                                 <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-blue-600 rounded"></div>
+                                    <div className="w-4 h-4 bg-blue-600 rounded" />
                                     <span className="text-gray-600 dark:text-gray-400">Soal aktif</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-green-100 dark:bg-green-900 border border-green-300 dark:border-green-700 rounded"></div>
+                                    <div className="w-4 h-4 bg-green-100 dark:bg-green-900 border border-green-300 dark:border-green-700 rounded" />
                                     <span className="text-gray-600 dark:text-gray-400">Sudah dijawab</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-gray-100 dark:bg-gray-700 rounded"></div>
+                                    <div className="w-4 h-4 bg-gray-100 dark:bg-gray-700 rounded" />
                                     <span className="text-gray-600 dark:text-gray-400">Belum dijawab</span>
                                 </div>
                             </div>
@@ -287,7 +298,7 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
                                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                                     Soal {currentQuestion + 1}
                                 </h2>
-                                {isQuestionAnswered(currentQ.id) ? (
+                                {isQuestionAnswered ? (
                                     <CheckCircle className="h-6 w-6 text-green-500" />
                                 ) : (
                                     <Circle className="h-6 w-6 text-gray-300 dark:text-gray-600" />
@@ -323,14 +334,14 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
                                             className="sr-only"
                                         />
                                         <div className={`
-                                            w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5
+                                            w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 flex-shrink-0
                                             ${answers[currentQ.id] === option
                                                 ? 'border-blue-500 bg-blue-500'
                                                 : 'border-gray-300 dark:border-gray-600'
                                             }
                                         `}>
                                             {answers[currentQ.id] === option && (
-                                                <div className="w-2 h-2 bg-white rounded-full"></div>
+                                                <div className="w-2 h-2 bg-white rounded-full" />
                                             )}
                                         </div>
                                         <div className="flex-1">
@@ -345,10 +356,10 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
                                 ))}
                             </div>
 
-                            {/* Navigation Buttons */}
+                            {/* Navigation */}
                             <div className="flex items-center justify-between">
                                 <button
-                                    onClick={() => setCurrentQuestion(Math.max(0, currentQuestion - 1))}
+                                    onClick={goToPrevious}
                                     disabled={currentQuestion === 0}
                                     className="flex items-center gap-2 py-2 px-4 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 >
@@ -361,7 +372,7 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
                                 </span>
 
                                 <button
-                                    onClick={() => setCurrentQuestion(Math.min(questions.length - 1, currentQuestion + 1))}
+                                    onClick={goToNext}
                                     disabled={currentQuestion === questions.length - 1}
                                     className="flex items-center gap-2 py-2 px-4 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 >
@@ -375,93 +386,85 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
 
                 {/* Incomplete Warning Modal */}
                 {showIncompleteWarning && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-md w-full mx-4">
-                            <div className="flex items-center gap-3 mb-4">
-                                <AlertTriangle className="h-6 w-6 text-red-500" />
-                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                                    Soal Belum Lengkap
-                                </h3>
-                            </div>
-
-                            <div className="mb-6 space-y-3">
-                                <p className="text-gray-700 dark:text-gray-300">
-                                    Anda belum menjawab semua soal. Silakan lengkapi jawaban terlebih dahulu.
-                                </p>
-                                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                                    <p className="text-sm text-red-700 dark:text-red-400 font-semibold mb-1">
-                                        Soal yang belum dijawab:
-                                    </p>
-                                    <p className="text-sm text-red-600 dark:text-red-400">
-                                        Nomor: {getUnansweredQuestions().join(', ')}
-                                    </p>
-                                    <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                                        Total: {questions.length - getAnsweredCount()} soal
-                                    </p>
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={() => setShowIncompleteWarning(false)}
-                                className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                            >
-                                Mengerti
-                            </button>
+                    <Modal onClose={() => setShowIncompleteWarning(false)}>
+                        <div className="flex items-center gap-3 mb-4">
+                            <AlertTriangle className="h-6 w-6 text-red-500" />
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                                Soal Belum Lengkap
+                            </h3>
                         </div>
-                    </div>
+                        <div className="mb-6 space-y-3">
+                            <p className="text-gray-700 dark:text-gray-300">
+                                Anda belum menjawab semua soal. Silakan lengkapi jawaban terlebih dahulu.
+                            </p>
+                            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                                <p className="text-sm text-red-700 dark:text-red-400 font-semibold mb-1">
+                                    Soal yang belum dijawab:
+                                </p>
+                                <p className="text-sm text-red-600 dark:text-red-400">
+                                    Nomor: {unansweredQuestions.join(', ')}
+                                </p>
+                                <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                                    Total: {questions.length - answeredCount} soal
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setShowIncompleteWarning(false)}
+                            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                        >
+                            Mengerti
+                        </button>
+                    </Modal>
                 )}
 
                 {/* Confirmation Modal */}
                 {showConfirmSubmit && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-md w-full mx-4">
-                            <div className="flex items-center gap-3 mb-4">
-                                <CheckCircle className="h-6 w-6 text-green-500" />
-                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                                    Konfirmasi Submit Quiz
-                                </h3>
-                            </div>
-
-                            <div className="mb-6 space-y-2">
-                                <p className="text-gray-700 dark:text-gray-300">
-                                    Anda yakin ingin menyelesaikan quiz?
+                    <Modal onClose={() => setShowConfirmSubmit(false)}>
+                        <div className="flex items-center gap-3 mb-4">
+                            <CheckCircle className="h-6 w-6 text-green-500" />
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                                Konfirmasi Submit Quiz
+                            </h3>
+                        </div>
+                        <div className="mb-6 space-y-2">
+                            <p className="text-gray-700 dark:text-gray-300">
+                                Anda yakin ingin menyelesaikan quiz?
+                            </p>
+                            <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                                <p className="text-green-600 dark:text-green-400">
+                                    ✓ Semua soal telah dijawab ({answeredCount}/{questions.length})
                                 </p>
-                                <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                                    <p className="text-green-600 dark:text-green-400">
-                                        ✓ Semua soal telah dijawab ({getAnsweredCount()}/{questions.length})
-                                    </p>
-                                    <p>• Sisa waktu: {formatTime(timeLeft)}</p>
-                                    <p className="text-red-600 dark:text-red-400">
-                                        • Quiz tidak dapat diubah setelah submit
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => setShowConfirmSubmit(false)}
-                                    className="flex-1 py-2 px-4 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                                >
-                                    Batal
-                                </button>
-                                <button
-                                    onClick={confirmSubmit}
-                                    className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-                                >
-                                    Ya, Submit
-                                </button>
+                                <p>• Sisa waktu: {formattedTime}</p>
+                                <p className="text-red-600 dark:text-red-400">
+                                    • Quiz tidak dapat diubah setelah submit
+                                </p>
                             </div>
                         </div>
-                    </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowConfirmSubmit(false)}
+                                className="flex-1 py-2 px-4 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                onClick={confirmSubmit}
+                                className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                            >
+                                Ya, Submit
+                            </button>
+                        </div>
+                    </Modal>
                 )}
 
                 {/* Time Warning */}
                 {timeLeft <= 300 && timeLeft > 0 && (
-                    <div className="fixed bottom-4 right-4 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg p-4 shadow-lg z-40">
+                    <div className="fixed bottom-4 right-4 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg p-4 shadow-lg z-40 animate-pulse">
                         <div className="flex items-center gap-2">
                             <Clock className="h-5 w-5 text-red-600" />
                             <span className="text-red-700 dark:text-red-400 font-semibold">
-                                Waktu tersisa: {formatTime(timeLeft)}
+                                Waktu tersisa: {formattedTime}
                             </span>
                         </div>
                     </div>
@@ -471,84 +474,13 @@ export default function Interface({ module, questions, quizConfig }: QuizInterfa
     );
 }
 
-// Demo data
-const demoModule = {
-    id: 1,
-    title: "Matematika Dasar",
-    color: "bg-blue-500"
-};
-
-const demoQuestions = [
-    {
-        id: 1,
-        question: "Berapakah hasil dari 15 + 27?",
-        options: {
-            A: "40",
-            B: "42",
-            C: "43",
-            D: "45"
-        },
-        correct_answer: "B"
-    },
-    {
-        id: 2,
-        question: "Berapakah hasil dari 8 × 7?",
-        options: {
-            A: "54",
-            B: "56",
-            C: "58",
-            D: "60"
-        },
-        correct_answer: "B"
-    },
-    {
-        id: 3,
-        question: "Berapakah hasil dari 100 ÷ 5?",
-        options: {
-            A: "15",
-            B: "20",
-            C: "25",
-            D: "30"
-        },
-        correct_answer: "B"
-    },
-    {
-        id: 4,
-        question: "Berapakah hasil dari 12²?",
-        options: {
-            A: "124",
-            B: "134",
-            C: "144",
-            D: "154"
-        },
-        correct_answer: "C"
-    },
-    {
-        id: 5,
-        question: "Berapakah hasil dari √64?",
-        options: {
-            A: "6",
-            B: "7",
-            C: "8",
-            D: "9"
-        },
-        correct_answer: "C"
-    }
-];
-
-const demoConfig = {
-    time_limit: 30,
-    total_questions: 5,
-    session_id: "demo-session-123"
-};
-
-// Render component with demo data
-const App = () => (
-    <Interface
-        module={demoModule}
-        questions={demoQuestions}
-        quizConfig={demoConfig}
-    />
-);
-
-export default App;
+// Reusable Modal Component
+function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-md w-full">
+                {children}
+            </div>
+        </div>
+    );
+}
