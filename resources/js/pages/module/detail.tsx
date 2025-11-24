@@ -207,6 +207,7 @@ const SectionHeader = memo(({
 SectionHeader.displayName = 'SectionHeader';
 
 export default function ModuleDetail() {
+
     const { moduleData, moduleContent, breadcrumbs, auth } = usePage<any>().props;
 
     // Consolidated state
@@ -222,62 +223,104 @@ export default function ModuleDetail() {
         showPraktikumModal: false,
         selectedFile: null as File | null,
         uploadProgress: 0,
-        // Tambahkan state untuk tracking completed items
         completedVideos: moduleContent.pengayaan.videos
             .filter((v: Video) => v.watched)
             .map((v: Video) => v.id),
         completedLinks: moduleContent.pengayaan.links
             .filter((l: Link) => l.completed)
             .map((l: Link) => l.id),
+        // Tambahan untuk resubmit
+        showDeleteConfirm: false,
+        isResubmitting: false,
     });
 
-    const enrichmentId = moduleData?.enrichment_id ?? moduleData?.id;
+    // Handler untuk delete submission
+    const handleDeleteSubmission = useCallback(() => {
+        if (!confirm('Apakah Anda yakin ingin menghapus file ini? Poin yang sudah didapat akan dikurangi.')) {
+            return;
+        }
 
-    // Memoized handlers
-const handleEnrichmentComplete = useCallback(async (itemId: number, itemType: 'video' | 'link', moduleId: number) => {
-    if (state.loading) return;
+        setState(prev => ({ ...prev, loading: true }));
 
-    setState(prev => ({ ...prev, loading: true }));
+        router.delete(
+            `/assignments/${moduleContent.praktikum.assignment_id}/submission`,
+            {
+                preserveScroll: true,
+                onSuccess: (page) => {
+                    const response = page.props.flash as any;
+                    if (response?.success) {
+                        alert(response.message || 'File berhasil dihapus!');
+                        setState(prev => ({
+                            ...prev,
+                            userPoints: response.total_points,
+                        }));
+                    }
+                    router.reload({ only: ['moduleContent', 'auth'] });
+                },
+                onError: (errors) => {
+                    console.error('Error:', errors);
+                    alert('Terjadi kesalahan saat menghapus file.');
+                },
+                onFinish: () => {
+                    setState(prev => ({ ...prev, loading: false }));
+                }
+            }
+        );
+    }, [moduleContent.praktikum.assignment_id]);
 
-    router.post(
-        `/enrichments/${itemId}/complete`,
-        {
-            type: itemType,
-            module_id: moduleId,
-        },
-        {
-            preserveScroll: true,
-            onSuccess: (page) => {
-                const response = page.props.flash as any;
-                if (response?.success) {
+    // Handler untuk resubmit (ganti file)
+    const handleResubmitAssignment = useCallback(async () => {
+        if (!state.selectedFile) {
+            alert('Pilih file terlebih dahulu');
+            return;
+        }
+
+        if (!confirm('Apakah Anda yakin ingin mengganti file? Poin akan dihitung ulang berdasarkan waktu pengumpulan saat ini.')) {
+            return;
+        }
+
+        setState(prev => ({ ...prev, loading: true, isResubmitting: true }));
+
+        const formData = new FormData();
+        formData.append('file', state.selectedFile);
+        formData.append('notes', '');
+
+        router.post(
+            `/assignments/${moduleContent.praktikum.assignment_id}/resubmit`,
+            formData as any,
+            {
+                preserveScroll: true,
+                forceFormData: true,
+                onSuccess: (page) => {
+                    const response = page.props.flash as any;
+                    if (response?.success) {
+                        alert(response.message || 'File berhasil diganti!');
+                        setState(prev => ({
+                            ...prev,
+                            selectedFile: null,
+                            showPraktikumModal: false,
+                            userPoints: response.total_points,
+                        }));
+                    }
+                    router.reload({ only: ['moduleContent', 'auth'] });
+                },
+                onError: (errors) => {
+                    console.error('Error:', errors);
+                    alert('Gagal mengganti file. Silakan coba lagi.');
+                },
+                onFinish: () => {
                     setState(prev => ({
                         ...prev,
-                        userPoints: response.total_points || prev.userPoints,
-                        completedVideos:
-                            itemType === 'video'
-                                ? [...prev.completedVideos, itemId]
-                                : prev.completedVideos,
-                        completedLinks:
-                            itemType === 'link'
-                                ? [...prev.completedLinks, itemId]
-                                : prev.completedLinks,
+                        loading: false,
+                        uploadProgress: 0,
+                        isResubmitting: false,
                     }));
                 }
-                // Reload untuk update progress di header
-                router.reload({ only: ['moduleData', 'moduleContent'] });
-            },
-            onError: (errors) => {
-                console.error('Error:', errors);
-                alert('Terjadi kesalahan. Silakan coba lagi.');
-            },
-            onFinish: () => {
-                setState(prev => ({ ...prev, loading: false }));
             }
-        }
-    );
-}, [state.loading]);
+        );
+    }, [state.selectedFile, moduleContent.praktikum.assignment_id]);
 
-
+    // Handler upload tetap sama
     const handleUploadAssignment = useCallback(async () => {
         if (!state.selectedFile) {
             alert('Pilih file terlebih dahulu');
@@ -488,7 +531,7 @@ const handleEnrichmentComplete = useCallback(async (itemId: number, itemType: 'v
                     </div>
                 ))}
                 <button
-                    onClick={() => handleComplete('atp')}
+                    onClick={() => handleComplete('learning_objective')}
                     disabled={state.loading || state.completedSections.atp}
                     className={`w-full mt-4 py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 ${
                         state.completedSections.atp
@@ -1043,7 +1086,7 @@ const handleEnrichmentComplete = useCallback(async (itemId: number, itemType: 'v
             {state.showPraktikumModal && (
                 <Modal
                     isOpen={state.showPraktikumModal}
-                    onClose={() => setState(prev => ({ ...prev, showPraktikumModal: false }))}
+                    onClose={() => setState(prev => ({ ...prev, showPraktikumModal: false, selectedFile: null }))}
                     title="Detail Praktikum"
                 >
                     <div className="space-y-6">
@@ -1061,7 +1104,112 @@ const handleEnrichmentComplete = useCallback(async (itemId: number, itemType: 'v
                             </div>
                         </div>
 
-                        {!moduleContent.praktikum.submitted && (
+                        {/* Jika sudah submit - tampilkan info file dan opsi hapus/ganti */}
+                        {moduleContent.praktikum.submitted ? (
+                            <div className="space-y-4">
+                                <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex items-center gap-3 flex-1">
+                                            <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+                                            <div>
+                                                <p className="text-green-700 dark:text-green-400 font-medium">
+                                                    Tugas sudah dikumpulkan
+                                                </p>
+                                                <p className="text-sm text-green-600 dark:text-green-500 mt-1">
+                                                    File: {moduleContent.praktikum.submissionFile}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Opsi untuk ganti file */}
+                                <div>
+                                    <h4 className="font-medium text-gray-900 dark:text-white mb-3">
+                                        Ganti File (Opsional):
+                                    </h4>
+                                    <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
+                                        <Upload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                                        <p className="text-gray-600 dark:text-gray-400 mb-2">
+                                            {state.selectedFile ? state.selectedFile.name : 'Pilih file baru untuk mengganti (PDF, max 10MB)'}
+                                        </p>
+                                        <p className="text-sm text-orange-600 dark:text-orange-400 mb-4">
+                                            ⚠️ Poin akan dihitung ulang berdasarkan waktu pengumpulan baru
+                                        </p>
+                                        {state.uploadProgress > 0 && state.uploadProgress < 100 && (
+                                            <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
+                                                <div
+                                                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                                    style={{ width: `${state.uploadProgress}%` }}
+                                                />
+                                            </div>
+                                        )}
+                                        <input
+                                            type="file"
+                                            accept=".pdf"
+                                            onChange={handleFileSelect}
+                                            className="hidden"
+                                            id="file-reupload"
+                                        />
+                                        <label
+                                            htmlFor="file-reupload"
+                                            className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition-colors cursor-pointer inline-block"
+                                        >
+                                            Pilih File Baru
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Tombol actions */}
+                                <div className="flex gap-3 pt-4">
+                                    <button
+                                        onClick={() => setState(prev => ({ ...prev, showPraktikumModal: false, selectedFile: null }))}
+                                        className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-lg transition-colors"
+                                    >
+                                        Tutup
+                                    </button>
+
+                                    <button
+                                        onClick={handleDeleteSubmission}
+                                        disabled={state.loading}
+                                        className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        {state.loading && !state.isResubmitting ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                Menghapus...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <X className="h-4 w-4" />
+                                                Hapus File
+                                            </>
+                                        )}
+                                    </button>
+
+                                    {state.selectedFile && (
+                                        <button
+                                            onClick={handleResubmitAssignment}
+                                            disabled={state.loading}
+                                            className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            {state.loading && state.isResubmitting ? (
+                                                <>
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    Mengganti...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Upload className="h-4 w-4" />
+                                                    Ganti File
+                                                </>
+                                            )}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            // Jika belum submit - tampilkan upload form seperti biasa
                             <div>
                                 <h4 className="font-medium text-gray-900 dark:text-white mb-4">Upload Laporan:</h4>
                                 <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
@@ -1091,47 +1239,34 @@ const handleEnrichmentComplete = useCallback(async (itemId: number, itemType: 'v
                                         Pilih File
                                     </label>
                                 </div>
-                            </div>
-                        )}
 
-                        {moduleContent.praktikum.submitted && (
-                            <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                                <div className="flex items-center gap-2">
-                                    <CheckCircle className="h-5 w-5 text-green-500" />
-                                    <span className="text-green-700 dark:text-green-400 font-medium">
-                                        Tugas sudah dikumpulkan
-                                    </span>
+                                <div className="flex gap-3 pt-4">
+                                    <button
+                                        onClick={() => setState(prev => ({ ...prev, showPraktikumModal: false }))}
+                                        className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-lg transition-colors"
+                                    >
+                                        Tutup
+                                    </button>
+                                    <button
+                                        onClick={handleUploadAssignment}
+                                        disabled={!state.selectedFile || state.loading}
+                                        className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        {state.loading ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                Uploading...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Upload className="h-4 w-4" />
+                                                Upload Laporan
+                                            </>
+                                        )}
+                                    </button>
                                 </div>
                             </div>
                         )}
-
-                        <div className="flex gap-3 pt-4">
-                            <button
-                                onClick={() => setState(prev => ({ ...prev, showPraktikumModal: false }))}
-                                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-lg transition-colors"
-                            >
-                                Tutup
-                            </button>
-                            {!moduleContent.praktikum.submitted && (
-                                <button
-                                    onClick={handleUploadAssignment}
-                                    disabled={!state.selectedFile || state.loading}
-                                    className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-                                >
-                                    {state.loading ? (
-                                        <>
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                            Uploading...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Upload className="h-4 w-4" />
-                                            Upload Laporan
-                                        </>
-                                    )}
-                                </button>
-                            )}
-                        </div>
                     </div>
                 </Modal>
             )}

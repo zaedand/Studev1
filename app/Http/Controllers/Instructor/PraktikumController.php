@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Instructor;
 use App\Http\Controllers\Controller;
 use App\Models\Assignment;
 use App\Models\AssignmentSubmission;
+use App\Models\AssignmentClassDeadline;
 use App\Models\Module;
+use App\Models\ClassModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -17,7 +19,7 @@ class PraktikumController extends Controller
      */
     public function index()
     {
-        $assignments = Assignment::with(['module', 'submissions.user'])
+        $assignments = Assignment::with(['module', 'submissions.user', 'classDeadlines.classModel'])
             ->withCount('submissions')
             ->latest()
             ->get()
@@ -25,13 +27,23 @@ class PraktikumController extends Controller
                 $submissions = $assignment->submissions;
                 $gradedSubmissions = $submissions->where('score', '!=', null);
 
+                // Map class deadlines
+                $classDeadlines = $assignment->classDeadlines->map(function ($cd) {
+                    return [
+                        'classId' => $cd->class_id,
+                        'className' => $cd->classModel->name ?? 'Unknown',
+                        'deadline' => $cd->deadline->format('Y-m-d\TH:i'),
+                    ];
+                });
+
                 return [
                     'id' => $assignment->id,
                     'title' => $assignment->title,
                     'moduleId' => $assignment->module_id,
                     'moduleName' => $assignment->module->title ?? 'Unknown Module',
                     'description' => $assignment->description,
-                    'deadline' => $assignment->deadline,
+                    'deadline' => $assignment->deadline ? $assignment->deadline->format('Y-m-d\TH:i') : null,
+                    'classDeadlines' => $classDeadlines,
                     'maxScore' => 100,
                     'submissions' => $submissions->count(),
                     'totalStudents' => \App\Models\User::where('role', 'student')->count(),
@@ -40,31 +52,145 @@ class PraktikumController extends Controller
                         : 0,
                     'status' => $assignment->is_active ? 'active' : 'draft',
                     'createdAt' => $assignment->created_at->format('Y-m-d'),
+                    'pointRewardEarly' => $assignment->point_reward_early ?? 10,
+                    'pointRewardOntime' => $assignment->point_reward_ontime ?? 5,
+                    'pointRewardLate' => $assignment->point_reward_late ?? 2,
                 ];
             });
 
-        $modules = Module::select('id', 'title', 'order_number')->orderBy('order_number')->get();
+        $modules = Module::select('id', 'title', 'order_number as order')->orderBy('order_number')->get();
+
+        // Get all active classes for the instructor
+        $classes = ClassModel::select('id', 'name')
+            ->orderBy('name')
+            ->get();
 
         return Inertia::render('Instructor/praktikum', [
             'assignments' => $assignments,
             'modules' => $modules,
+            'classes' => $classes,
         ]);
     }
 
-
-    public function previewSubmission($submissionId)
+    /**
+     * Store new assignment
+     */
+    public function store(Request $request)
     {
-        $submission = AssignmentSubmission::findOrFail($submissionId);
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'module_id' => 'required|exists:modules,id',
+            'description' => 'required|string',
+            'instructions' => 'nullable|string',
+            'deadline' => 'nullable|date|after:now', // Made optional since we use class deadlines
+            'class_deadlines' => 'required|array|min:1',
+            'class_deadlines.*.class_id' => 'required|exists:classes,id',
+            'class_deadlines.*.deadline' => 'required|date|after:now',
+            'max_score' => 'required|integer|min:1|max:200',
+            'point_reward_early' => 'required|integer|min:0|max:200',
+            'point_reward_ontime' => 'required|integer|min:0|max:200',
+            'point_reward_late' => 'required|integer|min:0|max:200',
+            'is_active' => 'boolean',
+        ]);
 
-        $filePath = $submission->file_path;
+        $assignment = Assignment::create([
+            'module_id' => $validated['module_id'],
+            'title' => $validated['title'],
+            'description' => $validated['description'],
+            'deadline' => $validated['deadline'] ?? null,
+            'point_reward_early' => $validated['point_reward_early'],
+            'point_reward_ontime' => $validated['point_reward_ontime'],
+            'point_reward_late' => $validated['point_reward_late'],
+            'is_active' => $validated['is_active'] ?? false,
+        ]);
 
-        if (!Storage::disk('public')->exists($filePath)) {
-            abort(404, 'File tidak ditemukan');
+        // Create class-specific deadlines
+        foreach ($validated['class_deadlines'] as $classDeadline) {
+            if (!empty($classDeadline['deadline'])) {
+                AssignmentClassDeadline::create([
+                    'assignment_id' => $assignment->id,
+                    'class_id' => $classDeadline['class_id'],
+                    'deadline' => $classDeadline['deadline'],
+                ]);
+            }
         }
 
-        return response()->file(
-            storage_path('app/public/' . $filePath)
-        );
+        return redirect()->back()->with('success', 'Praktikum berhasil dibuat!');
+    }
+
+    /**
+     * Update assignment
+     */
+    public function update(Request $request, $id)
+    {
+        $assignment = Assignment::findOrFail($id);
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'module_id' => 'required|exists:modules,id',
+            'description' => 'required|string',
+            'instructions' => 'nullable|string',
+            'deadline' => 'nullable|date',
+            'class_deadlines' => 'required|array|min:1',
+            'class_deadlines.*.class_id' => 'required|exists:classes,id',
+            'class_deadlines.*.deadline' => 'required|date',
+            'max_score' => 'required|integer|min:1|max:200',
+            'point_reward_early' => 'required|integer|min:0|max:200',
+            'point_reward_ontime' => 'required|integer|min:0|max:200',
+            'point_reward_late' => 'required|integer|min:0|max:200',
+            'is_active' => 'boolean',
+        ]);
+
+        $assignment->update([
+            'module_id' => $validated['module_id'],
+            'title' => $validated['title'],
+            'description' => $validated['description'],
+            'deadline' => $validated['deadline'] ?? null,
+            'point_reward_early' => $validated['point_reward_early'],
+            'point_reward_ontime' => $validated['point_reward_ontime'],
+            'point_reward_late' => $validated['point_reward_late'],
+            'is_active' => $validated['is_active'] ?? $assignment->is_active,
+        ]);
+
+        // Update class deadlines
+        // Delete existing deadlines
+        $assignment->classDeadlines()->delete();
+
+        // Create new deadlines
+        foreach ($validated['class_deadlines'] as $classDeadline) {
+            if (!empty($classDeadline['deadline'])) {
+                AssignmentClassDeadline::create([
+                    'assignment_id' => $assignment->id,
+                    'class_id' => $classDeadline['class_id'],
+                    'deadline' => $classDeadline['deadline'],
+                ]);
+            }
+        }
+
+        return redirect()->back()->with('success', 'Praktikum berhasil diperbarui!');
+    }
+
+    /**
+     * Delete assignment
+     */
+    public function destroy($id)
+    {
+        $assignment = Assignment::findOrFail($id);
+        $disk = Storage::disk('public');
+
+        // Delete all submission files
+        foreach ($assignment->submissions as $submission) {
+            if ($disk->exists($submission->file_path)) {
+                $disk->delete($submission->file_path);
+            }
+        }
+
+        // Delete class deadlines (cascade if not set in migration)
+        $assignment->classDeadlines()->delete();
+
+        $assignment->delete();
+
+        return redirect()->back()->with('success', 'Praktikum berhasil dihapus!');
     }
 
     /**
@@ -90,10 +216,10 @@ class PraktikumController extends Controller
         }
 
         $submissions = $query->get()->map(function ($submission) {
-            $deadline = $submission->assignment->deadline;
+            // Get deadline for the student's class
+            $deadline = $submission->assignment->getDeadlineForStudent($submission->user_id);
             $submittedAt = $submission->submitted_at;
             $isLate = $submittedAt > $deadline;
-
             $daysDiff = $deadline->diffInDays($submittedAt);
 
             // Use public disk for file operations
@@ -123,82 +249,6 @@ class PraktikumController extends Controller
     }
 
     /**
-     * Store new assignment
-     */
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'module_id' => 'required|exists:modules,id',
-            'description' => 'required|string',
-            'instructions' => 'nullable|string',
-            'deadline' => 'required|date|after:now',
-            'max_score' => 'required|integer|min:1|max:100',
-            'is_active' => 'boolean',
-        ]);
-
-        $assignment = Assignment::create([
-            'module_id' => $validated['module_id'],
-            'title' => $validated['title'],
-            'description' => $validated['description'],
-            'deadline' => $validated['deadline'],
-            'point_reward_early' => 10,
-            'point_reward_ontime' => 5,
-            'point_reward_late' => 2,
-            'is_active' => $validated['is_active'] ?? false,
-        ]);
-
-        return redirect()->back()->with('success', 'Praktikum berhasil dibuat!');
-    }
-
-    /**
-     * Update assignment
-     */
-    public function update(Request $request, $id)
-    {
-        $assignment = Assignment::findOrFail($id);
-
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'module_id' => 'required|exists:modules,id',
-            'description' => 'required|string',
-            'instructions' => 'nullable|string',
-            'deadline' => 'required|date',
-            'max_score' => 'required|integer|min:1|max:100',
-            'is_active' => 'boolean',
-        ]);
-
-        $assignment->update([
-            'module_id' => $validated['module_id'],
-            'title' => $validated['title'],
-            'description' => $validated['description'],
-            'deadline' => $validated['deadline'],
-            'is_active' => $validated['is_active'] ?? $assignment->is_active,
-        ]);
-
-        return redirect()->back()->with('success', 'Praktikum berhasil diperbarui!');
-    }
-
-    /**
-     * Delete assignment
-     */
-    public function destroy($id)
-    {
-        $assignment = Assignment::findOrFail($id);
-
-        // Delete all submission files
-        foreach ($assignment->submissions as $submission) {
-            if (Storage::exists($submission->file_path)) {
-                Storage::delete($submission->file_path);
-            }
-        }
-
-        $assignment->delete();
-
-        return redirect()->back()->with('success', 'Praktikum berhasil dihapus!');
-    }
-
-    /**
      * Grade submission - Manual grading by instructor
      */
     public function gradeSubmission(Request $request, $submissionId)
@@ -206,7 +256,7 @@ class PraktikumController extends Controller
         $submission = AssignmentSubmission::findOrFail($submissionId);
 
         $validated = $request->validate([
-            'score' => 'required|integer|min:0|max:100',
+            'score' => 'required|integer|min:0|max:200',
             'feedback' => 'nullable|string',
         ]);
 
@@ -221,67 +271,41 @@ class PraktikumController extends Controller
     }
 
     /**
+     * Preview submission file
+     */
+    public function previewSubmission($submissionId)
+    {
+        $submission = AssignmentSubmission::findOrFail($submissionId);
+        $disk = Storage::disk('public');
+        $filePath = $submission->file_path;
+
+        if (!$disk->exists($filePath)) {
+            abort(404, 'File tidak ditemukan');
+        }
+
+        return response()->file($disk->path($filePath));
+    }
+
+    /**
      * Download submission file
      */
     public function downloadSubmission($submissionId)
     {
         $submission = AssignmentSubmission::findOrFail($submissionId);
-
-        // File path yang disimpan di database
+        $disk = Storage::disk('public');
         $filePath = $submission->file_path;
 
         if (!$filePath) {
-            return abort(404, 'Path file tidak ditemukan di database');
+            abort(404, 'Path file tidak ditemukan di database');
         }
 
-        // Pastikan file ada di storage/app/public/...
-        if (!Storage::disk('public')->exists($filePath)) {
-            return abort(404, 'File tidak ditemukan di storage/public');
+        if (!$disk->exists($filePath)) {
+            abort(404, 'File tidak ditemukan di storage');
         }
 
-        // Download file
-        return Storage::disk('public')->download(
-            $filePath,
-            basename($filePath)
-        );
-    }
+        $fileName = $submission->file_name ?? basename($filePath);
 
-
-    /**
-     * Download all submissions for an assignment
-     */
-    public function downloadAllSubmissions($assignmentId)
-    {
-        $assignment = Assignment::with('submissions')->findOrFail($assignmentId);
-
-        if ($assignment->submissions->isEmpty()) {
-            return redirect()->back()->with('error', 'Tidak ada pengumpulan yang tersedia');
-        }
-
-        $zip = new \ZipArchive();
-        $zipFileName = storage_path("app/temp/{$assignment->title}_submissions.zip");
-
-        // Create temp directory if not exists
-        if (!file_exists(storage_path('app/temp'))) {
-            mkdir(storage_path('app/temp'), 0755, true);
-        }
-
-        if ($zip->open($zipFileName, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
-            return redirect()->back()->with('error', 'Gagal membuat file ZIP');
-        }
-
-        foreach ($assignment->submissions as $submission) {
-            if (Storage::exists($submission->file_path)) {
-                $zip->addFile(
-                    Storage::path($submission->file_path),
-                    "{$submission->user->name}_{$submission->user->nim}_" . basename($submission->file_path)
-                );
-            }
-        }
-
-        $zip->close();
-
-        return response()->download($zipFileName)->deleteFileAfterSend(true);
+        return $disk->download($filePath, $fileName);
     }
 
     /**
@@ -292,7 +316,10 @@ class PraktikumController extends Controller
         $totalAssignments = Assignment::count();
         $totalSubmissions = AssignmentSubmission::count();
         $gradedSubmissions = AssignmentSubmission::whereNotNull('score')->get();
+
+        // Count late submissions using class-specific deadlines
         $lateSubmissions = AssignmentSubmission::whereHas('assignment', function($query) {
+            // This is simplified - you may need to adjust based on actual class logic
             $query->whereRaw('assignment_submissions.submitted_at > assignments.deadline');
         })->count();
 

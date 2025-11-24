@@ -78,6 +78,22 @@ class User extends Authenticatable
     }
 
     // === Relationships ===
+
+    public function classes()
+{
+    return $this->belongsToMany(
+        ClassModel::class,
+        'class_students',
+        'student_id',
+        'class_id'
+    );
+}
+
+public function instructorClasses()
+{
+    return $this->hasMany(ClassModel::class, 'instructor_id');
+}
+
     public function quizAttempts(): HasMany
     {
         return $this->hasMany(QuizAttempt::class);

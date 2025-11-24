@@ -84,7 +84,7 @@ class AssignmentController extends Controller
             return back()->with([
                 'flash' => [
                     'error' => true,
-                    'message' => 'Tugas sudah dikumpulkan sebelumnya'
+                    'message' => 'Tugas sudah dikumpulkan sebelumnya. Gunakan tombol "Ganti File" untuk mengupdate submission.'
                 ]
             ]);
         }
@@ -120,24 +120,21 @@ class AssignmentController extends Controller
                 'public'
             );
 
-            // ✅ Hitung poin berdasarkan waktu pengumpulan
+            // Hitung poin berdasarkan waktu pengumpulan
             $submittedAt = now();
             $deadline = $assignment->deadline;
-            $earlyDeadline = $deadline->copy()->subDays(2); // 2 hari sebelum deadline = early
+            $earlyDeadline = $deadline->copy()->subDays(2);
 
             $pointsEarned = 0;
             $status = 'submitted';
 
             if ($submittedAt->lte($earlyDeadline)) {
-                // Submit lebih awal (>2 hari sebelum deadline)
                 $pointsEarned = $assignment->point_reward_early;
                 $status = 'early';
             } elseif ($submittedAt->lte($deadline)) {
-                // Submit tepat waktu (antara 2 hari sebelum deadline sampai deadline)
                 $pointsEarned = $assignment->point_reward_ontime;
                 $status = 'ontime';
             } else {
-                // Submit terlambat (setelah deadline)
                 $pointsEarned = $assignment->point_reward_late;
                 $status = 'late';
             }
@@ -146,7 +143,7 @@ class AssignmentController extends Controller
             $submission = AssignmentSubmission::create([
                 'assignment_id' => $assignment->id,
                 'user_id' => $user->id,
-                'file_name' => $fileName, // FIX: sesuai nama file tersimpan
+                'file_name' => $fileName,
                 'file_path' => $filePath,
                 'file_size' => $file->getSize(),
                 'notes' => $request->notes,
@@ -155,8 +152,7 @@ class AssignmentController extends Controller
                 'points_earned' => $pointsEarned,
             ]);
 
-
-            // ✅ Create progress record
+            // Create progress record
             UserProgress::updateOrCreate(
                 [
                     'user_id' => $user->id,
@@ -170,7 +166,7 @@ class AssignmentController extends Controller
                 ]
             );
 
-            // ✅ Tambahkan poin ke user
+            // Tambahkan poin ke user
             $user->increment('points', $pointsEarned);
 
             DB::commit();
@@ -193,7 +189,6 @@ class AssignmentController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
 
-            // Delete uploaded file if exists
             if (isset($filePath) && Storage::disk('public')->exists($filePath)) {
                 Storage::disk('public')->delete($filePath);
             }
@@ -214,18 +209,241 @@ class AssignmentController extends Controller
     }
 
     /**
+     * Delete submission (menghapus file yang sudah diupload)
+     */
+    public function deleteSubmission($assignmentId)
+    {
+        $user = Auth::user();
+        $assignment = Assignment::findOrFail($assignmentId);
+
+        $submission = AssignmentSubmission::where('assignment_id', $assignment->id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (!$submission) {
+            return back()->with([
+                'flash' => [
+                    'error' => true,
+                    'message' => 'Submission tidak ditemukan'
+                ]
+            ]);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            // Hapus file dari storage
+            if (Storage::disk('public')->exists($submission->file_path)) {
+                Storage::disk('public')->delete($submission->file_path);
+            }
+
+            // Kurangi poin user
+            $pointsToDeduct = $submission->points_earned;
+            $user->decrement('points', $pointsToDeduct);
+
+            // Hapus progress record
+            UserProgress::where('user_id', $user->id)
+                ->where('progressable_type', Assignment::class)
+                ->where('progressable_id', $assignment->id)
+                ->delete();
+
+            // Hapus submission record
+            $submission->delete();
+
+            DB::commit();
+
+            return back()->with([
+                'flash' => [
+                    'success' => true,
+                    'message' => "File berhasil dihapus. Poin dikurangi -{$pointsToDeduct} 🔥",
+                    'total_points' => $user->fresh()->points,
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            \Log::error('Assignment deletion error', [
+                'user_id' => $user->id,
+                'assignment_id' => $assignment->id,
+                'error' => $e->getMessage()
+            ]);
+
+            return back()->with([
+                'flash' => [
+                    'error' => true,
+                    'message' => 'Terjadi kesalahan saat menghapus file: ' . $e->getMessage()
+                ]
+            ]);
+        }
+    }
+
+    /**
+     * Resubmit assignment (ganti file)
+     */
+    public function resubmit(Request $request, $assignmentId)
+    {
+        $user = Auth::user();
+        $assignment = Assignment::findOrFail($assignmentId);
+
+        $existingSubmission = AssignmentSubmission::where('assignment_id', $assignment->id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (!$existingSubmission) {
+            return back()->with([
+                'flash' => [
+                    'error' => true,
+                    'message' => 'Tidak ada submission sebelumnya'
+                ]
+            ]);
+        }
+
+        // Validate request
+        $request->validate([
+            'file' => [
+                'required',
+                'file',
+                'mimes:pdf',
+                'max:10240'
+            ],
+            'notes' => 'nullable|string|max:1000',
+        ], [
+            'file.required' => 'File wajib diupload',
+            'file.mimes' => 'Hanya file PDF yang diperbolehkan',
+            'file.max' => 'Ukuran file maksimal 10MB',
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+            // Hapus file lama
+            if (Storage::disk('public')->exists($existingSubmission->file_path)) {
+                Storage::disk('public')->delete($existingSubmission->file_path);
+            }
+
+            // Simpan poin lama untuk dikurangi
+            $oldPoints = $existingSubmission->points_earned;
+
+            // Upload file baru
+            $file = $request->file('file');
+            $fileName = Str::slug($user->name) . '_' .
+                        Str::slug($assignment->title) . '_' .
+                        time() . '.' .
+                        $file->getClientOriginalExtension();
+
+            $filePath = $file->storeAs(
+                'assignments/' . $assignment->id,
+                $fileName,
+                'public'
+            );
+
+            // Hitung poin berdasarkan waktu pengumpulan BARU
+            $submittedAt = now();
+            $deadline = $assignment->deadline;
+            $earlyDeadline = $deadline->copy()->subDays(2);
+
+            $pointsEarned = 0;
+            $status = 'submitted';
+
+            if ($submittedAt->lte($earlyDeadline)) {
+                $pointsEarned = $assignment->point_reward_early;
+                $status = 'early';
+            } elseif ($submittedAt->lte($deadline)) {
+                $pointsEarned = $assignment->point_reward_ontime;
+                $status = 'ontime';
+            } else {
+                $pointsEarned = $assignment->point_reward_late;
+                $status = 'late';
+            }
+
+            // Update submission
+            $existingSubmission->update([
+                'file_name' => $fileName,
+                'file_path' => $filePath,
+                'file_size' => $file->getSize(),
+                'notes' => $request->notes,
+                'status' => $status,
+                'submitted_at' => $submittedAt,
+                'points_earned' => $pointsEarned,
+            ]);
+
+            // Update progress
+            UserProgress::updateOrCreate(
+                [
+                    'user_id' => $user->id,
+                    'progressable_type' => Assignment::class,
+                    'progressable_id' => $assignment->id,
+                ],
+                [
+                    'is_completed' => true,
+                    'points_earned' => $pointsEarned,
+                    'completed_at' => $submittedAt,
+                ]
+            );
+
+            // Update poin user (kurangi poin lama, tambah poin baru)
+            $pointsDifference = $pointsEarned - $oldPoints;
+            if ($pointsDifference > 0) {
+                $user->increment('points', $pointsDifference);
+            } else if ($pointsDifference < 0) {
+                $user->decrement('points', abs($pointsDifference));
+            }
+
+            DB::commit();
+
+            $statusMessage = match($status) {
+                'early' => "Tepat waktu! Anda mendapatkan poin maksimal 🎉",
+                'ontime' => "Tepat waktu! Anda mendapatkan poin penuh ✅",
+                'late' => "Terlambat. Poin dikurangi ⚠️",
+                default => "Berhasil dikumpulkan"
+            };
+
+            $pointsMessage = $pointsDifference >= 0
+                ? "+{$pointsDifference} poin"
+                : "{$pointsDifference} poin";
+
+            return back()->with([
+                'flash' => [
+                    'success' => true,
+                    'message' => "File berhasil diganti! {$statusMessage} ({$pointsMessage} 🔥)",
+                    'total_points' => $user->fresh()->points,
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            if (isset($filePath) && Storage::disk('public')->exists($filePath)) {
+                Storage::disk('public')->delete($filePath);
+            }
+
+            \Log::error('Assignment resubmission error', [
+                'user_id' => $user->id,
+                'assignment_id' => $assignment->id,
+                'error' => $e->getMessage()
+            ]);
+
+            return back()->with([
+                'flash' => [
+                    'error' => true,
+                    'message' => 'Terjadi kesalahan saat mengganti file: ' . $e->getMessage()
+                ]
+            ]);
+        }
+    }
+
+    /**
      * Download submission file
      */
     public function download(AssignmentSubmission $submission)
     {
         $user = Auth::user();
 
-        // Check if user owns this submission or is instructor
         if ($submission->user_id !== $user->id && !$user->hasRole('instructor')) {
             abort(403, 'Unauthorized action.');
         }
 
-        // Check if file exists
         if (!Storage::disk('public')->exists($submission->file_path)) {
             return back()->with([
                 'flash' => [

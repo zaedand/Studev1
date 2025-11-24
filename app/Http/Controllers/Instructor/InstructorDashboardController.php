@@ -22,7 +22,7 @@ class InstructorDashboardController extends Controller
             return [
                 'totalModules' => Module::count(),
                 'totalStudents' => User::where('role', 'student')->count(),
-                'totalClasses' => ClassModel::count(), // ✅ Fixed: was ClassRoom
+                'totalClasses' => ClassModel::count(), // ✅ Fixed: ClassModel instead of ClassRoom
                 'averagePoints' => round(User::where('role', 'student')->avg('points') ?? 0),
             ];
         });
@@ -46,15 +46,16 @@ class InstructorDashboardController extends Controller
         $modules = $this->getModulesWithCompletion($stats['totalStudents']);
 
         // Classes overview - optimized with eager loading
-        $classes = ClassModel::withCount('students')
+        $classes = ClassModel::withCount('students') // ✅ Fixed: ClassModel
             ->latest()
             ->get()
             ->map(function ($class) {
                 return [
                     'id' => $class->id,
                     'name' => $class->name,
-                    'code' => $class->code ?? 'N/A',
+                    'description' => $class->description,
                     'students_count' => $class->students_count,
+                    'is_active' => $class->is_active,
                     'created_at' => $class->created_at->format('d M Y'),
                 ];
             });
@@ -181,7 +182,11 @@ class InstructorDashboardController extends Controller
             if ($componentCounts['cpmks'] > 0) {
                 $completedCpmks = DB::table('user_cpmks')
                     ->where('user_id', $studentId)
-                    ->where('module_id', $moduleId)
+                    ->whereIn('module_cpmk_id', function($query) use ($moduleId) {
+                        $query->select('id')
+                              ->from('module_cpmks')
+                              ->where('module_id', $moduleId);
+                    })
                     ->where('is_completed', true)
                     ->count();
                 $userCompletedComponents += min($completedCpmks, $componentCounts['cpmks']);
@@ -191,7 +196,11 @@ class InstructorDashboardController extends Controller
             if ($componentCounts['learning_objectives'] > 0) {
                 $completedLearningObj = DB::table('user_learning_objectives')
                     ->where('user_id', $studentId)
-                    ->where('module_id', $moduleId)
+                    ->whereIn('module_learning_objective_id', function($query) use ($moduleId) {
+                        $query->select('id')
+                              ->from('module_learning_objectives')
+                              ->where('module_id', $moduleId);
+                    })
                     ->where('is_completed', true)
                     ->count();
                 $userCompletedComponents += min($completedLearningObj, $componentCounts['learning_objectives']);

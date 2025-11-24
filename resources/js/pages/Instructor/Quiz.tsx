@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import { router } from '@inertiajs/react';
 import { type BreadcrumbItem } from '@/types';
+import toast from 'react-hot-toast';
+import { useCustomToast } from '@/hooks/use-toast';
+import { DeleteConfirmationModal, useDeleteConfirmation } from '@/components/ui/delete-confirmation-modal';
 import {
     ClipboardList, Plus, Edit3, Trash2, Eye, Search, Users, Clock,
     CheckCircle, X, Save, AlertCircle, BarChart3, Calendar, Target,
@@ -62,6 +65,8 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
     quizzes: initialQuizzes = [],
     modules = []
 }) => {
+    const customToast = useCustomToast(); // Use custom toast hook
+
     const [activeTab, setActiveTab] = useState('quizzes');
     const [showModal, setShowModal] = useState(false);
     const [modalType, setModalType] = useState('');
@@ -104,15 +109,21 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
 
     const loadResults = async (quizId: number) => {
         setLoading(true);
+        const loadingToast = toast.loading('Memuat hasil quiz...');
+
         try {
             const response = await fetch(`/instructor/quiz/results/data?quiz_id=${quizId}`);
             if (response.ok) {
                 const data = await response.json();
                 setResults(data.results || []);
                 setFilteredResults(data.results || []);
+                toast.success('Hasil quiz berhasil dimuat!', { id: loadingToast });
+            } else {
+                toast.error('Gagal memuat hasil quiz', { id: loadingToast });
             }
         } catch (error) {
             console.error('Error loading results:', error);
+            toast.error('Terjadi kesalahan saat memuat hasil', { id: loadingToast });
         } finally {
             setLoading(false);
         }
@@ -120,20 +131,28 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
 
     const loadAnalytics = async () => {
         setLoading(true);
+        const loadingToast = toast.loading('Memuat data analitik...');
+
         try {
             const response = await fetch('/instructor/quiz/analytics/data');
             if (response.ok) {
                 const data = await response.json();
                 setAnalytics(data);
+                toast.success('Data analitik berhasil dimuat!', { id: loadingToast });
+            } else {
+                toast.error('Gagal memuat data analitik', { id: loadingToast });
             }
         } catch (error) {
             console.error('Error loading analytics:', error);
+            toast.error('Terjadi kesalahan saat memuat analitik', { id: loadingToast });
         } finally {
             setLoading(false);
         }
     };
 
     const loadQuizDetail = async (quiz: Quiz) => {
+        const loadingToast = toast.loading('Memuat detail quiz...');
+
         try {
             const response = await fetch(`/instructor/quiz/${quiz.id}`);
             if (response.ok) {
@@ -145,9 +164,13 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
                     time_limit: data.quiz.time_limit || 30,
                     questions: Array.isArray(data.quiz.questions) ? data.quiz.questions : []
                 });
+                toast.success('Detail quiz berhasil dimuat!', { id: loadingToast });
+            } else {
+                toast.error('Gagal memuat detail quiz', { id: loadingToast });
             }
         } catch (error) {
             console.error('Error loading quiz detail:', error);
+            toast.error('Terjadi kesalahan saat memuat detail', { id: loadingToast });
         }
     };
 
@@ -192,36 +215,67 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
 
     const handleDeleteQuiz = (quiz: Quiz) => {
         if (confirm(`Apakah Anda yakin ingin menghapus quiz "${quiz.title}"?`)) {
-            router.delete(`/instructor/quiz/${quiz.id}`, {
-                onSuccess: () => {
-                    setQuizzes(prevQuizzes => prevQuizzes.filter(q => q.id !== quiz.id));
+            customToast.withLoading(
+                new Promise((resolve, reject) => {
+                    router.delete(`/instructor/quiz/${quiz.id}`, {
+                        onSuccess: () => {
+                            setQuizzes(prevQuizzes => prevQuizzes.filter(q => q.id !== quiz.id));
+                            resolve(true);
+                        },
+                        onError: () => reject()
+                    });
+                }),
+                {
+                    loading: 'Menghapus quiz...',
+                    success: `Quiz "${quiz.title}" berhasil dihapus! 🗑️`,
+                    error: 'Gagal menghapus quiz'
                 }
-            });
+            );
         }
     };
 
     const handleToggleStatus = (quiz: Quiz) => {
-        router.patch(`/instructor/quiz/${quiz.id}/toggle-status`, {}, {
-            onSuccess: () => {
-                setQuizzes(prevQuizzes => prevQuizzes.map(q =>
-                    q.id === quiz.id
-                        ? { ...q, status: q.status === 'active' ? 'draft' : 'active' as 'active' | 'draft' }
-                        : q
-                ));
+        const newStatus = quiz.status === 'active' ? 'draft' : 'active';
+        const action = newStatus === 'active' ? 'mengaktifkan' : 'menonaktifkan';
+
+        customToast.withLoading(
+            new Promise((resolve, reject) => {
+                router.patch(`/instructor/quiz/${quiz.id}/toggle-status`, {}, {
+                    onSuccess: () => {
+                        setQuizzes(prevQuizzes => prevQuizzes.map(q =>
+                            q.id === quiz.id
+                                ? { ...q, status: newStatus }
+                                : q
+                        ));
+                        resolve(true);
+                    },
+                    onError: () => reject()
+                });
+            }),
+            {
+                loading: `${action.charAt(0).toUpperCase() + action.slice(1)} quiz...`,
+                success: `Quiz berhasil ${newStatus === 'active' ? 'diaktifkan' : 'dinonaktifkan'}! ${newStatus === 'active' ? '✅' : '📝'}`,
+                error: `Gagal ${action} quiz`
             }
-        });
+        );
     };
 
     const addQuestion = () => {
         if (!currentQuestion.question.trim()) {
-            alert('Pertanyaan tidak boleh kosong!');
+            toast.error('Pertanyaan tidak boleh kosong!', {
+                icon: '⚠️',
+                duration: 3000
+            });
             return;
         }
 
         if (currentQuestion.type === 'multiple_choice') {
             const validOptions = currentQuestion.options.filter(opt => opt.trim());
             if (validOptions.length < 2) {
-                alert('Minimal harus ada 2 pilihan jawaban!');
+                toast.error('Minimal harus ada 2 pilihan jawaban!', {
+                    icon: '⚠️',
+                    duration: 3000
+                });
                 return;
             }
         }
@@ -230,6 +284,11 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
             ...prev,
             questions: [...prev.questions, { ...currentQuestion }]
         }));
+
+        toast.success('Soal berhasil ditambahkan!', {
+            icon: '➕',
+            duration: 2000
+        });
 
         setCurrentQuestion({
             question: '',
@@ -245,41 +304,87 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
             ...prev,
             questions: prev.questions.filter((_, i) => i !== index)
         }));
+
+        toast.success('Soal berhasil dihapus', {
+            icon: '🗑️',
+            duration: 2000
+        });
     };
 
     const handleSubmitQuiz = () => {
+        // Validation
         if (!quizForm.title.trim()) {
-            alert('Judul quiz tidak boleh kosong!');
+            toast.error('Judul quiz tidak boleh kosong!', {
+                icon: '⚠️',
+                duration: 3000
+            });
             return;
         }
         if (!quizForm.module_id) {
-            alert('Modul harus dipilih!');
+            toast.error('Modul harus dipilih!', {
+                icon: '⚠️',
+                duration: 3000
+            });
             return;
         }
         if (quizForm.questions.length === 0) {
-            alert('Minimal harus ada 1 soal!');
+            toast.error('Minimal harus ada 1 soal!', {
+                icon: '⚠️',
+                duration: 3000
+            });
             return;
         }
 
         const data = {
-            ...quizForm,
-            module_id: parseInt(quizForm.module_id)
+            module_id: parseInt(quizForm.module_id),
+            title: quizForm.title,
+            description: quizForm.description,
+            time_limit: quizForm.time_limit,
+            questions: JSON.stringify(quizForm.questions)
         };
 
         if (modalType === 'create') {
-            router.post('/instructor/quiz', data, {
-                onSuccess: () => {
-                    setShowModal(false);
-                    router.reload({ only: ['quizzes'] });
+            customToast.withLoading(
+                new Promise((resolve, reject) => {
+                    router.post('/instructor/quiz', data, {
+                        onSuccess: () => {
+                            setShowModal(false);
+                            router.reload({ only: ['quizzes'] });
+                            resolve(true);
+                        },
+                        onError: (errors) => {
+                            console.error('Create quiz error:', errors);
+                            reject(errors);
+                        }
+                    });
+                }),
+                {
+                    loading: 'Membuat quiz...',
+                    success: 'Quiz berhasil dibuat! 🎉',
+                    error: 'Gagal membuat quiz. Periksa data yang diinput.'
                 }
-            });
+            );
         } else if (modalType === 'edit' && selectedQuiz) {
-            router.put(`/instructor/quiz/${selectedQuiz.id}`, data, {
-                onSuccess: () => {
-                    setShowModal(false);
-                    router.reload({ only: ['quizzes'] });
+            customToast.withLoading(
+                new Promise((resolve, reject) => {
+                    router.put(`/instructor/quiz/${selectedQuiz.id}`, data, {
+                        onSuccess: () => {
+                            setShowModal(false);
+                            router.reload({ only: ['quizzes'] });
+                            resolve(true);
+                        },
+                        onError: (errors) => {
+                            console.error('Update quiz error:', errors);
+                            reject(errors);
+                        }
+                    });
+                }),
+                {
+                    loading: 'Memperbarui quiz...',
+                    success: 'Quiz berhasil diperbarui! ✅',
+                    error: 'Gagal memperbarui quiz. Periksa data yang diinput.'
                 }
-            });
+            );
         }
     };
 
@@ -422,7 +527,7 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
                 <button
                     onClick={addQuestion}
                     disabled={!currentQuestion.question.trim()}
-                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg"
+                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors"
                 >
                     <Plus className="h-4 w-4" />
                     Tambah Soal
@@ -439,7 +544,7 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
                         <h4 className="font-medium">Soal {index + 1}</h4>
                         <button
                             onClick={() => removeQuestion(index)}
-                            className="text-red-500 hover:text-red-700"
+                            className="text-red-500 hover:text-red-700 transition-colors"
                         >
                             <Trash2 className="h-4 w-4" />
                         </button>
@@ -532,7 +637,7 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
                             </div>
                             <button
                                 onClick={handleCreateQuiz}
-                                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+                                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
                             >
                                 <Plus className="h-4 w-4" />
                                 Buat Quiz Baru
@@ -575,29 +680,33 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
                                                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                                                     <button
                                                         onClick={() => handleToggleStatus(quiz)}
-                                                        className={`p-2 rounded-lg ${
+                                                        className={`p-2 rounded-lg transition-colors ${
                                                             quiz.status === 'active'
                                                                 ? 'text-red-500 hover:bg-red-50'
                                                                 : 'text-green-500 hover:bg-green-50'
                                                         }`}
+                                                        title={quiz.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
                                                     >
                                                         {quiz.status === 'active' ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
                                                     </button>
                                                     <button
                                                         onClick={() => handleViewQuiz(quiz)}
-                                                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                                                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                        title="Lihat Detail"
                                                     >
                                                         <Eye className="h-4 w-4" />
                                                     </button>
                                                     <button
                                                         onClick={() => handleEditQuiz(quiz)}
-                                                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                                                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                                        title="Edit Quiz"
                                                     >
                                                         <Edit3 className="h-4 w-4" />
                                                     </button>
                                                     <button
                                                         onClick={() => handleDeleteQuiz(quiz)}
-                                                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                        title="Hapus Quiz"
                                                     >
                                                         <Trash2 className="h-4 w-4" />
                                                     </button>
@@ -640,7 +749,7 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
                         <div className="flex items-center gap-4 mb-6">
                             <button
                                 onClick={() => setSelectedQuiz(null)}
-                                className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+                                className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors"
                             >
                                 <ArrowLeft className="h-5 w-5" />
                                 Kembali
@@ -694,14 +803,16 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
                                 {loading ? (
                                     <div className="p-8 text-center">
                                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                                        <p className="text-sm text-gray-500 mt-2">Memuat data...</p>
                                     </div>
                                 ) : results.length === 0 ? (
                                     <div className="p-8 text-center text-gray-500">
-                                        Belum ada mahasiswa yang mengerjakan quiz ini
+                                        <ClipboardList className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                                        <p>Belum ada mahasiswa yang mengerjakan quiz ini</p>
                                     </div>
                                 ) : (
                                     results.map((result) => (
-                                        <div key={result.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <div key={result.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-3 mb-2">
@@ -727,7 +838,7 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
                                                         <span>{new Date(result.completedAt).toLocaleString('id-ID')}</span>
                                                     </div>
                                                 </div>
-                                                <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
+                                                <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
                                                     <Eye className="h-4 w-4" />
                                                     Lihat Detail
                                                 </button>
@@ -817,7 +928,7 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
                                             <tbody>
                                                 {Array.isArray(analytics.quiz_analytics) && analytics.quiz_analytics.length > 0 ? (
                                                     analytics.quiz_analytics.map((quiz: any, index: number) => (
-                                                        <tr key={index} className="border-b hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                                        <tr key={index} className="border-b hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                                                             <td className="px-6 py-4 font-medium">{quiz.quiz_title}</td>
                                                             <td className="px-6 py-4 text-sm text-gray-600">{quiz.module_title}</td>
                                                             <td className="px-6 py-4 text-sm">{quiz.total_attempts}</td>
@@ -869,7 +980,7 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
                                     </h3>
                                     <button
                                         onClick={() => setShowModal(false)}
-                                        className="text-gray-500 hover:text-gray-700"
+                                        className="text-gray-500 hover:text-gray-700 transition-colors"
                                     >
                                         <X className="h-6 w-6" />
                                     </button>
@@ -1078,7 +1189,7 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
                                 <div className="flex items-center justify-end gap-4">
                                     <button
                                         onClick={() => setShowModal(false)}
-                                        className="px-6 py-2 text-gray-600 border rounded-lg hover:bg-gray-100"
+                                        className="px-6 py-2 text-gray-600 border rounded-lg hover:bg-gray-100 transition-colors"
                                     >
                                         {modalType === 'view' ? 'Tutup' : 'Batal'}
                                     </button>
@@ -1086,7 +1197,7 @@ const InstructorQuizManagement: React.FC<InstructorQuizManagementProps> = ({
                                         <button
                                             onClick={handleSubmitQuiz}
                                             disabled={!quizForm.title || !quizForm.module_id || quizForm.questions.length === 0}
-                                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg"
+                                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors"
                                         >
                                             <Save className="h-4 w-4" />
                                             {modalType === 'create' ? 'Buat Quiz' : 'Simpan Perubahan'}

@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { router, useForm } from '@inertiajs/react';
+import { useCustomToast } from '@/hooks/use-toast';
+import { DeleteConfirmationModal, useDeleteConfirmation } from '@/components/ui/delete-confirmation-modal';
 import {
     Upload, Plus, Edit3, Trash2, Eye, Search, Download,
     Calendar, FileText, Star, BarChart3, X, Save, AlertTriangle,
@@ -15,12 +17,16 @@ interface Assignment {
     moduleName: string;
     description: string;
     deadline: string;
+    classDeadlines: ClassDeadline[];
     maxScore: number;
     submissions: number;
     totalStudents: number;
     averageScore: number;
-    status: string;
+    status: 'active' | 'draft';
     createdAt: string;
+    pointRewardEarly?: number;
+    pointRewardOntime?: number;
+    pointRewardLate?: number;
 }
 
 interface Module {
@@ -39,12 +45,40 @@ interface Submission {
     fileName: string;
     fileSize: string;
     submittedAt: string;
-    status: string;
+    status: 'graded' | 'submitted';
     score: number | null;
     feedback: string;
     isLate: boolean;
     daysLate: number;
     daysEarly: number;
+}
+
+interface AssignmentFormData {
+    title: string;
+    module_id: string;
+    description: string;
+    instructions: string;
+    deadline: string;
+    class_deadlines: Array<{
+        class_id: string;
+        deadline: string;
+    }>;
+    max_score: number;
+    point_reward_early: number;
+    point_reward_ontime: number;
+    point_reward_late: number;
+    is_active: boolean;
+}
+
+interface ClassDeadline {
+    classId: number;
+    className: string;
+    deadline: string;
+}
+
+interface Class {
+    id: number;
+    name: string;
 }
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -53,12 +87,16 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function InstructorPraktikumManagement({
-    assignments: initialAssignments,
-    modules
+    assignments,
+    modules,
+    classes
 }: {
     assignments: Assignment[],
-    modules: Module[]
+    modules: Module[],
+    classes: Class[]
 }) {
+    const toast = useCustomToast(); // Use custom toast hook
+
     const [activeTab, setActiveTab] = useState('assignments');
     const [showModal, setShowModal] = useState(false);
     const [modalType, setModalType] = useState('');
@@ -66,21 +104,26 @@ export default function InstructorPraktikumManagement({
     const [searchTerm, setSearchTerm] = useState('');
     const [submissions, setSubmissions] = useState<Submission[]>([]);
     const [analytics, setAnalytics] = useState<any>(null);
-
-    // New states for card-based navigation
     const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
     const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
     const [showPdfPreview, setShowPdfPreview] = useState(false);
     const [pdfUrl, setPdfUrl] = useState('');
     const [selectedModuleFilter, setSelectedModuleFilter] = useState<number | 'all'>('all');
 
-    const assignmentForm = useForm({
+    const assignmentForm = useForm<AssignmentFormData>({
         title: '',
         module_id: '',
         description: '',
         instructions: '',
         deadline: '',
+        class_deadlines: classes.map(cls => ({
+            class_id: cls.id.toString(),
+            deadline: ''
+        })),
         max_score: 100,
+        point_reward_early: 10,
+        point_reward_ontime: 5,
+        point_reward_late: 2,
         is_active: false,
     });
 
@@ -93,7 +136,8 @@ export default function InstructorPraktikumManagement({
     const fetchSubmissions = (assignmentId: number) => {
         fetch(`/instructor/praktikum/submissions?assignment_id=${assignmentId}`)
             .then(res => res.json())
-            .then(data => setSubmissions(data));
+            .then(data => setSubmissions(data))
+            .catch(err => console.error('Error fetching submissions:', err));
     };
 
     // Fetch analytics
@@ -101,66 +145,133 @@ export default function InstructorPraktikumManagement({
         if (activeTab === 'analytics') {
             fetch('/instructor/praktikum/analytics')
                 .then(res => res.json())
-                .then(data => setAnalytics(data));
+                .then(data => setAnalytics(data))
+                .catch(err => console.error('Error fetching analytics:', err));
         }
     }, [activeTab]);
 
-    // Group assignments by module
-    const assignmentsByModule = modules.map(module => {
-        const moduleAssignments = initialAssignments.filter(
-            a => a.moduleId === module.id
-        );
-        return {
-            module,
-            assignments: moduleAssignments,
-            totalSubmissions: moduleAssignments.reduce((sum, a) => sum + a.submissions, 0),
-            totalPossible: moduleAssignments.length * (initialAssignments[0]?.totalStudents || 0),
-        };
-    }).filter(m => m.assignments.length > 0);
+    // Group assignments by module (FIXED: using assignments prop instead of undefined initialAssignments)
+    const assignmentsByModule = useMemo(() => {
+        return modules.map(module => {
+            const moduleAssignments = assignments.filter(
+                a => a.moduleId === module.id
+            );
+            return {
+                module,
+                assignments: moduleAssignments,
+                totalSubmissions: moduleAssignments.reduce((sum, a) => sum + a.submissions, 0),
+                totalPossible: moduleAssignments.length * (assignments[0]?.totalStudents || 0),
+            };
+        }).filter(m => m.assignments.length > 0);
+    }, [modules, assignments]);
 
-    const filteredAssignments = selectedModuleFilter === 'all'
-        ? initialAssignments
-        : initialAssignments.filter(a => a.moduleId === selectedModuleFilter);
+    const filteredAssignments = useMemo(() => {
+        return selectedModuleFilter === 'all'
+            ? assignments
+            : assignments.filter(a => a.moduleId === selectedModuleFilter);
+    }, [selectedModuleFilter, assignments]);
 
     const handleCreateAssignment = () => {
-        assignmentForm.post('/instructor/praktikum', {
-            onSuccess: () => {
-                setShowModal(false);
-                assignmentForm.reset();
+        toast.withLoading(
+            new Promise((resolve, reject) => {
+                assignmentForm.post('/instructor/praktikum', {
+                    onSuccess: () => {
+                        setShowModal(false);
+                        assignmentForm.reset();
+                        resolve(true);
+                    },
+                    onError: (errors) => {
+                        console.error(errors);
+                        reject(errors);
+                    }
+                });
+            }),
+            {
+                loading: 'Membuat praktikum...',
+                success: 'Praktikum berhasil dibuat! 🎉',
+                error: 'Gagal membuat praktikum. Periksa form Anda.',
             }
-        });
+        );
     };
 
     const handleUpdateAssignment = () => {
-        assignmentForm.put(`/instructor/praktikum/${selectedItem.id}`, {
-            onSuccess: () => {
-                setShowModal(false);
-                assignmentForm.reset();
+        toast.withLoading(
+            new Promise((resolve, reject) => {
+                assignmentForm.put(`/instructor/praktikum/${selectedItem.id}`, {
+                    onSuccess: () => {
+                        setShowModal(false);
+                        assignmentForm.reset();
+                        resolve(true);
+                    },
+                    onError: (errors) => {
+                        console.error(errors);
+                        reject(errors);
+                    }
+                });
+            }),
+            {
+                loading: 'Memperbarui praktikum...',
+                success: 'Praktikum berhasil diperbarui! ✅',
+                error: 'Gagal memperbarui praktikum.',
             }
-        });
+        );
     };
 
     const handleDeleteAssignment = (id: number) => {
         if (confirm('Apakah Anda yakin ingin menghapus praktikum ini?')) {
-            router.delete(`/instructor/praktikum/${id}`);
+            toast.withLoading(
+                new Promise((resolve, reject) => {
+                    router.delete(`/instructor/praktikum/${id}`, {
+                        onSuccess: () => resolve(true),
+                        onError: () => reject(),
+                    });
+                }),
+                {
+                    loading: 'Menghapus praktikum...',
+                    success: 'Praktikum berhasil dihapus! 🗑️',
+                    error: 'Gagal menghapus praktikum.',
+                }
+            );
         }
     };
 
     const handleGradeSubmission = () => {
-        gradeForm.post(`/instructor/praktikum/submissions/${selectedSubmission?.id}/grade`, {
-            onSuccess: () => {
-                setShowModal(false);
-                gradeForm.reset();
-                // Refresh submissions
-                if (selectedAssignment) {
-                    fetchSubmissions(selectedAssignment.id);
-                }
+        if (!selectedSubmission) return;
+
+        const score = parseInt(gradeForm.data.score);
+        const studentName = selectedSubmission.studentName;
+
+        toast.withLoading(
+            new Promise((resolve, reject) => {
+                gradeForm.post(`/instructor/praktikum/submissions/${selectedSubmission.id}/grade`, {
+                    onSuccess: () => {
+                        setShowModal(false);
+                        gradeForm.reset();
+                        if (selectedAssignment) {
+                            fetchSubmissions(selectedAssignment.id);
+                        }
+                        resolve(true);
+                    },
+                    onError: (errors) => {
+                        console.error(errors);
+                        reject(errors);
+                    }
+                });
+            }),
+            {
+                loading: 'Menyimpan nilai...',
+                success: `Nilai ${studentName} berhasil disimpan: ${score}/100 ⭐`,
+                error: 'Gagal menyimpan nilai.',
             }
-        });
+        );
     };
 
     const openCreateModal = () => {
         assignmentForm.reset();
+        assignmentForm.setData('class_deadlines', classes.map(cls => ({
+            class_id: cls.id.toString(),
+            deadline: ''
+        })));
         setModalType('create');
         setShowModal(true);
     };
@@ -172,8 +283,18 @@ export default function InstructorPraktikumManagement({
             module_id: assignment.moduleId.toString(),
             description: assignment.description,
             instructions: '',
-            deadline: assignment.deadline,
+            deadline: assignment.deadline || '',
+            class_deadlines: classes.map(cls => {
+                const existing = assignment.classDeadlines.find(cd => cd.classId === cls.id);
+                return {
+                    class_id: cls.id.toString(),
+                    deadline: existing ? existing.deadline : ''
+                };
+            }),
             max_score: assignment.maxScore,
+            point_reward_early: assignment.pointRewardEarly || 10,
+            point_reward_ontime: assignment.pointRewardOntime || 5,
+            point_reward_late: assignment.pointRewardLate || 2,
             is_active: assignment.status === 'active',
         });
         setModalType('edit');
@@ -368,19 +489,21 @@ export default function InstructorPraktikumManagement({
                                                 </div>
                                             </div>
 
-                                            <div className="p-3 rounded-lg border bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <Calendar className="h-4 w-4 text-blue-500" />
-                                                        <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                                                            {formatDeadline(assignment.deadline)}
+                                            {assignment.deadline && (
+                                                <div className="p-3 rounded-lg border bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <Calendar className="h-4 w-4 text-blue-500" />
+                                                            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                                                                {formatDeadline(assignment.deadline)}
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-xs text-gray-500">
+                                                            {new Date(assignment.deadline).toLocaleDateString('id-ID')}
                                                         </span>
                                                     </div>
-                                                    <span className="text-xs text-gray-500">
-                                                        {new Date(assignment.deadline).toLocaleDateString('id-ID')}
-                                                    </span>
                                                 </div>
-                                            </div>
+                                            )}
 
                                             <div className="mt-4">
                                                 <div className="flex justify-between text-xs text-gray-500 mb-1">
@@ -419,13 +542,6 @@ export default function InstructorPraktikumManagement({
                                 </h2>
                                 <p className="text-sm text-gray-500">{selectedAssignment.moduleName}</p>
                             </div>
-                            <a
-                                href={`/instructor/praktikum/assignments/${selectedAssignment.id}/download-all`}
-                                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
-                            >
-                                <Download className="h-4 w-4" />
-                                Download Semua
-                            </a>
                         </div>
 
                         {/* Stats Cards */}
@@ -545,16 +661,6 @@ export default function InstructorPraktikumManagement({
                         </h2>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-                                <Upload className="h-8 w-8 text-blue-600 mb-3" />
-                                <h3 className="font-medium text-gray-600 dark:text-gray-400 mb-2">Total Praktikum</h3>
-                                <p className="text-3xl font-bold text-blue-600">{analytics.totalAssignments}</p>
-                            </div>
-                            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-                                <Users className="h-8 w-8 text-green-600 mb-3" />
-                                <h3 className="font-medium text-gray-600 dark:text-gray-400 mb-2">Total Pengumpulan</h3>
-                                <p className="text-3xl font-bold text-green-600">{analytics.totalSubmissions}</p>
-                            </div>
-                            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
                                 <Award className="h-8 w-8 text-orange-600 mb-3" />
                                 <h3 className="font-medium text-gray-600 dark:text-gray-400 mb-2">Rata-rata Nilai</h3>
                                 <p className="text-3xl font-bold text-orange-600">{analytics.averageScore}</p>
@@ -672,20 +778,61 @@ export default function InstructorPraktikumManagement({
                                                 <p className="text-red-500 text-sm mt-1">{assignmentForm.errors.module_id}</p>
                                             )}
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                                Deadline
-                                            </label>
-                                            <input
-                                                type="datetime-local"
-                                                value={assignmentForm.data.deadline}
-                                                onChange={e => assignmentForm.setData('deadline', e.target.value)}
-                                                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                                            />
-                                            {assignmentForm.errors.deadline && (
-                                                <p className="text-red-500 text-sm mt-1">{assignmentForm.errors.deadline}</p>
-                                            )}
+                                    </div>
+
+                                    {/* Class-specific Deadlines Section */}
+                                    <div className="border-t pt-6">
+                                        <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                                            Deadline per Kelas
+                                        </h4>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                                            Tentukan deadline yang berbeda untuk setiap kelas
+                                        </p>
+
+                                        <div className="space-y-4">
+                                            {classes.map((cls, index) => (
+                                                <div key={cls.id} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                                    <div className="flex-1">
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                            📚 Kelas {cls.name}
+                                                        </label>
+                                                        <input
+                                                            type="datetime-local"
+                                                            value={assignmentForm.data.class_deadlines[index]?.deadline || ''}
+                                                            onChange={e => {
+                                                                const newDeadlines = [...assignmentForm.data.class_deadlines];
+                                                                newDeadlines[index] = {
+                                                                    class_id: cls.id.toString(),
+                                                                    deadline: e.target.value
+                                                                };
+                                                                assignmentForm.setData('class_deadlines', newDeadlines);
+                                                            }}
+                                                            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                                            required
+                                                        />
+                                                    </div>
+                                                    {assignmentForm.data.class_deadlines[index]?.deadline && (
+                                                        <div className="text-sm text-green-600 dark:text-green-400">
+                                                            ✓ Set
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
                                         </div>
+
+                                        {assignmentForm.errors.class_deadlines && (
+                                            <p className="text-red-500 text-sm mt-2">{assignmentForm.errors.class_deadlines}</p>
+                                        )}
+
+                                        <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                                            <p className="text-sm text-blue-700 dark:text-blue-300">
+                                                💡 <strong>Catatan:</strong> Setiap kelas dapat memiliki deadline yang berbeda.
+                                                Mahasiswa akan melihat deadline sesuai dengan kelas mereka.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-6">
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                                 Skor Maksimal
@@ -702,7 +849,32 @@ export default function InstructorPraktikumManagement({
                                                 <p className="text-red-500 text-sm mt-1">{assignmentForm.errors.max_score}</p>
                                             )}
                                         </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                Poin Tepat Waktu
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={assignmentForm.data.point_reward_ontime}
+                                                onChange={e => assignmentForm.setData('point_reward_ontime', parseInt(e.target.value))}
+                                                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                                min="0"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                Poin Terlambat
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={assignmentForm.data.point_reward_late}
+                                                onChange={e => assignmentForm.setData('point_reward_late', parseInt(e.target.value))}
+                                                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                                min="0"
+                                            />
+                                        </div>
                                     </div>
+
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                             Deskripsi Tugas
@@ -718,6 +890,7 @@ export default function InstructorPraktikumManagement({
                                             <p className="text-red-500 text-sm mt-1">{assignmentForm.errors.description}</p>
                                         )}
                                     </div>
+
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                             Petunjuk Pengerjaan (Opsional)
@@ -730,6 +903,7 @@ export default function InstructorPraktikumManagement({
                                             placeholder="1. Langkah pertama&#10;2. Langkah kedua&#10;3. dst..."
                                         />
                                     </div>
+
                                     <div className="flex items-center gap-3">
                                         <input
                                             type="checkbox"

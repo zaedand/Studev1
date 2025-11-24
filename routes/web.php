@@ -103,6 +103,13 @@ Route::middleware(['auth', 'role:student'])->group(function () {
             ->name('submit');
     });
 
+    Route::post('/assignments/{assignment}/resubmit', [AssignmentController::class, 'resubmit'])
+        ->name('assignments.resubmit');
+    Route::delete('/assignments/{assignment}/submission', [AssignmentController::class, 'deleteSubmission'])
+        ->name('assignments.delete');
+
+ 
+
     // Assignment Submission Download
     Route::get('/assignment-submissions/{submission}/download', [AssignmentController::class, 'download'])
         ->name('assignment-submissions.download');
@@ -184,7 +191,32 @@ Route::middleware(['auth', 'role:instructor'])
     | Class Management
     |--------------------------------------------------------------------------
     */
-    Route::resource('classes', ClassRoomController::class);
+    Route::prefix('classes')->name('classes.')->group(function () {
+        // List all classes
+        Route::get('/', [ClassRoomController::class, 'index'])->name('index');
+
+        // Create class
+        Route::get('/create', [ClassRoomController::class, 'create'])->name('create');
+        Route::post('/', [ClassRoomController::class, 'store'])->name('store');
+
+        // Show class details
+        Route::get('/{id}', [ClassRoomController::class, 'show'])->name('show');
+
+        // Edit class
+        Route::get('/{id}/edit', [ClassRoomController::class, 'edit'])->name('edit');
+        Route::put('/{id}', [ClassRoomController::class, 'update'])->name('update');
+
+        // Delete class
+        Route::delete('/{id}', [ClassRoomController::class, 'destroy'])->name('destroy');
+
+        // Toggle active status
+        Route::post('/{id}/toggle-active', [ClassRoomController::class, 'toggleActive'])->name('toggle-active');
+
+        // Student management in class
+        Route::post('/{id}/students', [ClassRoomController::class, 'addStudent'])->name('add-student');
+        Route::delete('/{classId}/students/{studentId}', [ClassRoomController::class, 'removeStudent'])->name('remove-student');
+        Route::get('/{id}/available-students', [ClassRoomController::class, 'availableStudents'])->name('available-students');
+    });
 
     /*
     |--------------------------------------------------------------------------
@@ -213,8 +245,6 @@ Route::middleware(['auth', 'role:instructor'])
             ->name('submissions.grade');
         Route::get('/submissions/{id}/download', [PraktikumController::class, 'downloadSubmission'])
             ->name('submissions.download');
-        Route::get('/assignments/{id}/download-all', [PraktikumController::class, 'downloadAllSubmissions'])
-            ->name('assignments.download-all');
 
         // Analytics
         Route::get('/analytics', [PraktikumController::class, 'analytics'])

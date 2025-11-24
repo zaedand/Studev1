@@ -1,28 +1,28 @@
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { PageProps as InertiaPageProps } from '@inertiajs/core';
-import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import {
     Users,
     Plus,
     Edit,
     Trash2,
     GraduationCap,
-    Calendar,
+    Eye,
     X,
-    Save
+    Save,
+    Power,
+    ChevronRight
 } from 'lucide-react';
-import { useState, FormEventHandler } from 'react';
+import { useState } from 'react';
 
 interface ClassRoom {
     id: number;
     name: string;
-    code: string;
     description: string;
-    academic_year: number;
-    semester: 'ganjil' | 'genap';
     is_active: boolean;
     students_count: number;
+    instructor_name: string;
     created_at: string;
 }
 
@@ -39,6 +39,21 @@ export default function ClassesIndex() {
     const { classes } = usePage<PageProps>().props;
     const [showModal, setShowModal] = useState(false);
     const [editingClass, setEditingClass] = useState<ClassRoom | null>(null);
+
+    const handleToggleActive = (classId: number) => {
+        router.post(`/instructor/classes/${classId}/toggle-active`);
+    };
+
+    const handleDelete = (classRoom: ClassRoom) => {
+        if (classRoom.students_count > 0) {
+            alert(`Cannot delete ${classRoom.name} because it has ${classRoom.students_count} student(s). Please remove all students first.`);
+            return;
+        }
+
+        if (confirm(`Are you sure you want to delete "${classRoom.name}"?`)) {
+            router.delete(`/instructor/classes/${classRoom.id}`);
+        }
+    };
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -112,15 +127,21 @@ export default function ClassesIndex() {
                     {classes.map((classRoom) => (
                         <div
                             key={classRoom.id}
-                            className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 hover:shadow-lg transition-shadow"
+                            className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 hover:shadow-lg transition-all duration-200 group"
                         >
                             <div className="flex items-start justify-between mb-4">
-                                <div>
-                                    <h3 className="font-semibold text-lg text-gray-900 dark:text-white">
-                                        {classRoom.name}
-                                    </h3>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                                        {classRoom.code}
+                                <div className="flex-1">
+                                    <Link
+                                        href={`/instructor/classes/${classRoom.id}`}
+                                        className="group/link"
+                                    >
+                                        <h3 className="font-semibold text-lg text-gray-900 dark:text-white group-hover/link:text-purple-600 dark:group-hover/link:text-purple-400 flex items-center gap-2">
+                                            {classRoom.name}
+                                            <ChevronRight className="h-4 w-4 opacity-0 group-hover/link:opacity-100 transition-opacity" />
+                                        </h3>
+                                    </Link>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                        Instructor: {classRoom.instructor_name}
                                     </p>
                                 </div>
                                 <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
@@ -133,41 +154,49 @@ export default function ClassesIndex() {
                             </div>
 
                             {classRoom.description && (
-                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
                                     {classRoom.description}
                                 </p>
                             )}
 
                             <div className="space-y-2 mb-4">
-                                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                                    <Calendar className="h-4 w-4" />
-                                    <span>
-                                        {classRoom.academic_year} - Semester {classRoom.semester === 'ganjil' ? 'Ganjil' : 'Genap'}
+                                <div className="flex items-center gap-2 text-sm">
+                                    <Users className="h-4 w-4 text-gray-400" />
+                                    <span className="text-gray-600 dark:text-gray-400">
+                                        {classRoom.students_count} {classRoom.students_count === 1 ? 'Student' : 'Students'}
                                     </span>
                                 </div>
-                                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                                    <Users className="h-4 w-4" />
-                                    <span>{classRoom.students_count} Students</span>
+                                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                    Created: {classRoom.created_at}
                                 </div>
                             </div>
 
                             <div className="flex items-center gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <Link
+                                    href={`/instructor/classes/${classRoom.id}`}
+                                    className="flex-1 flex items-center justify-center gap-2 bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-4 py-2 rounded-lg text-sm transition-colors"
+                                >
+                                    <Eye className="h-4 w-4" />
+                                    View
+                                </Link>
                                 <button
                                     onClick={() => {
                                         setEditingClass(classRoom);
                                         setShowModal(true);
                                     }}
-                                    className="flex-1 flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-4 py-2 rounded-lg text-sm transition-colors"
+                                    className="flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-4 py-2 rounded-lg text-sm transition-colors"
                                 >
                                     <Edit className="h-4 w-4" />
-                                    Edit
                                 </button>
                                 <button
-                                    onClick={() => {
-                                        if (confirm(`Delete ${classRoom.name}?`)) {
-                                            router.delete(`/instructor/classes/${classRoom.id}`);
-                                        }
-                                    }}
+                                    onClick={() => handleToggleActive(classRoom.id)}
+                                    className="flex items-center justify-center gap-2 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/20 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400 px-4 py-2 rounded-lg text-sm transition-colors"
+                                    title="Toggle Active Status"
+                                >
+                                    <Power className="h-4 w-4" />
+                                </button>
+                                <button
+                                    onClick={() => handleDelete(classRoom)}
                                     className="flex items-center justify-center gap-2 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 px-4 py-2 rounded-lg text-sm transition-colors"
                                 >
                                     <Trash2 className="h-4 w-4" />
@@ -176,6 +205,28 @@ export default function ClassesIndex() {
                         </div>
                     ))}
                 </div>
+
+                {classes.length === 0 && (
+                    <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                        <GraduationCap className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                            No Classes Yet
+                        </h3>
+                        <p className="text-gray-600 dark:text-gray-400 mb-6">
+                            Start by creating your first class to organize students
+                        </p>
+                        <button
+                            onClick={() => {
+                                setEditingClass(null);
+                                setShowModal(true);
+                            }}
+                            className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg transition-colors"
+                        >
+                            <Plus className="h-5 w-5" />
+                            Create First Class
+                        </button>
+                    </div>
+                )}
 
                 {/* Class Modal */}
                 {showModal && (
@@ -203,14 +254,12 @@ function ClassModal({ classRoom, onClose }: ClassModalProps) {
 
     const { data, setData, post, put, processing, errors, reset } = useForm({
         name: classRoom?.name || '',
-        code: classRoom?.code || '',
         description: classRoom?.description || '',
-        academic_year: classRoom?.academic_year || new Date().getFullYear(),
-        semester: classRoom?.semester || 'ganjil' as 'ganjil' | 'genap',
+        instructor_id: '' as any, // Will be set by backend to current user
         is_active: classRoom?.is_active ?? true,
     });
 
-    const submit: FormEventHandler = (e) => {
+    const submit = (e: React.FormEvent) => {
         e.preventDefault();
 
         if (isEditing) {
@@ -245,7 +294,7 @@ function ClassModal({ classRoom, onClose }: ClassModalProps) {
                     </button>
                 </div>
 
-                <form onSubmit={submit} className="p-6 space-y-6">
+                <div className="p-6 space-y-6">
                     {/* Name */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -256,27 +305,10 @@ function ClassModal({ classRoom, onClose }: ClassModalProps) {
                             value={data.name}
                             onChange={(e) => setData('name', e.target.value)}
                             className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                            placeholder="e.g., Kelas A"
+                            placeholder="e.g., Programming Class A"
                         />
                         {errors.name && (
                             <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.name}</p>
-                        )}
-                    </div>
-
-                    {/* Code */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Class Code <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                            type="text"
-                            value={data.code}
-                            onChange={(e) => setData('code', e.target.value)}
-                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                            placeholder="e.g., 2024-A-PROG"
-                        />
-                        {errors.code && (
-                            <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.code}</p>
                         )}
                     </div>
 
@@ -289,59 +321,28 @@ function ClassModal({ classRoom, onClose }: ClassModalProps) {
                             value={data.description}
                             onChange={(e) => setData('description', e.target.value)}
                             rows={3}
-                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white resize-none"
                             placeholder="Class description..."
                         />
-                    </div>
-
-                    {/* Academic Year & Semester */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Academic Year <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                                type="number"
-                                value={data.academic_year}
-                                onChange={(e) => setData('academic_year', parseInt(e.target.value))}
-                                min="2020"
-                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                            />
-                            {errors.academic_year && (
-                                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.academic_year}</p>
-                            )}
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Semester <span className="text-red-500">*</span>
-                            </label>
-                            <select
-                                value={data.semester}
-                                onChange={(e) => setData('semester', e.target.value as 'ganjil' | 'genap')}
-                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                            >
-                                <option value="ganjil">Ganjil</option>
-                                <option value="genap">Genap</option>
-                            </select>
-                            {errors.semester && (
-                                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.semester}</p>
-                            )}
-                        </div>
+                        {errors.description && (
+                            <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.description}</p>
+                        )}
                     </div>
 
                     {/* Active Status */}
-                    <div>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={data.is_active}
-                                onChange={(e) => setData('is_active', e.target.checked)}
-                                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                            />
-                            <span className="text-sm text-gray-700 dark:text-gray-300">
-                                Active (visible to students)
-                            </span>
+                    <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <input
+                            type="checkbox"
+                            id="is_active"
+                            checked={data.is_active}
+                            onChange={(e) => setData('is_active', e.target.checked)}
+                            className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                        />
+                        <label htmlFor="is_active" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+                            <div className="font-semibold">Active Class</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                Active classes are visible to students
+                            </div>
                         </label>
                     </div>
 
@@ -355,15 +356,15 @@ function ClassModal({ classRoom, onClose }: ClassModalProps) {
                             Cancel
                         </button>
                         <button
-                            type="submit"
+                            onClick={submit}
                             disabled={processing}
                             className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-lg transition-colors"
                         >
                             <Save className="h-4 w-4" />
-                            {processing ? 'Saving...' : (isEditing ? 'Update' : 'Create')}
+                            {processing ? 'Saving...' : (isEditing ? 'Update Class' : 'Create Class')}
                         </button>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
     );

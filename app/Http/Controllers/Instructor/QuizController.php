@@ -3,8 +3,6 @@
 namespace App\Http\Controllers\Instructor;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\StoreQuizRequest;
-use App\Http\Requests\UpdateQuizRequest;
 use App\Models\Module;
 use App\Models\Quiz;
 use App\Models\QuizQuestion;
@@ -54,21 +52,36 @@ class QuizController extends Controller
         }
     }
 
-    public function store(StoreQuizRequest $request)
+    public function store(Request $request)
     {
+        $validated = $request->validate([
+            'module_id' => 'required|exists:modules,id',
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'time_limit' => 'required|integer|min:5|max:180',
+            'questions' => 'required|string', // JSON string
+        ]);
+
         try {
-            DB::transaction(function () use ($request) {
+            // Decode questions from JSON string
+            $questions = json_decode($validated['questions'], true);
+
+            if (!is_array($questions) || empty($questions)) {
+                return redirect()->back()->with('error', 'Format soal tidak valid atau soal kosong.');
+            }
+
+            DB::transaction(function () use ($validated, $questions) {
                 $quiz = Quiz::create([
-                    'module_id'         => $request->module_id,
-                    'title'             => $request->title,
-                    'description'       => $request->description,
-                    'total_questions'   => count($request->questions),
-                    'time_limit'        => $request->time_limit ?? 30,
-                    'point_per_question'=> collect($request->questions)->avg('points') ?? 10,
+                    'module_id'         => $validated['module_id'],
+                    'title'             => $validated['title'],
+                    'description'       => $validated['description'],
+                    'total_questions'   => count($questions),
+                    'time_limit'        => $validated['time_limit'],
+                    'point_per_question'=> collect($questions)->avg('points') ?? 10,
                     'is_active'         => false,
                 ]);
 
-                foreach ($request->questions as $index => $questionData) {
+                foreach ($questions as $index => $questionData) {
                     QuizQuestion::create([
                         'quiz_id'       => $quiz->id,
                         'question'      => $questionData['question'],
@@ -80,10 +93,10 @@ class QuizController extends Controller
                 }
             });
 
-            return redirect()->route('instructor.quiz-manage')->with('success', 'Quiz berhasil dibuat.');
+            return redirect()->route('instructor.quiz.index')->with('success', 'Quiz berhasil dibuat.');
         } catch (\Exception $e) {
             Log::error('Error creating quiz: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Terjadi kesalahan saat membuat quiz.');
+            return redirect()->back()->with('error', 'Terjadi kesalahan saat membuat quiz: ' . $e->getMessage());
         }
     }
 
@@ -118,47 +131,59 @@ class QuizController extends Controller
         }
     }
 
-    public function update(UpdateQuizRequest $request, Quiz $quiz)
+    public function update(Request $request, Quiz $quiz)
     {
+        $validated = $request->validate([
+            'module_id' => 'required|exists:modules,id',
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'time_limit' => 'required|integer|min:5|max:180',
+            'questions' => 'required|string', // JSON string
+        ]);
+
         try {
             // Check if quiz has been attempted
-            if ($quiz->attempts()->exists() && $request->has('questions')) {
+            if ($quiz->attempts()->exists()) {
                 return redirect()->back()->with('error', 'Quiz tidak dapat diubah karena sudah ada mahasiswa yang mengerjakan.');
             }
 
-            DB::transaction(function () use ($request, $quiz) {
+            // Decode questions from JSON string
+            $questions = json_decode($validated['questions'], true);
+
+            if (!is_array($questions) || empty($questions)) {
+                return redirect()->back()->with('error', 'Format soal tidak valid atau soal kosong.');
+            }
+
+            DB::transaction(function () use ($validated, $questions, $quiz) {
                 $quiz->update([
-                    'module_id'         => $request->module_id,
-                    'title'             => $request->title,
-                    'description'       => $request->description,
-                    'time_limit'        => $request->time_limit ?? 30,
-                    'total_questions'   => count($request->questions),
-                    'point_per_question'=> collect($request->questions)->avg('points') ?? 10,
+                    'module_id'         => $validated['module_id'],
+                    'title'             => $validated['title'],
+                    'description'       => $validated['description'],
+                    'time_limit'        => $validated['time_limit'],
+                    'total_questions'   => count($questions),
+                    'point_per_question'=> collect($questions)->avg('points') ?? 10,
                 ]);
 
-                // Only update questions if provided
-                if ($request->has('questions')) {
-                    // Delete existing questions
-                    $quiz->questions()->delete();
+                // Delete existing questions
+                $quiz->questions()->delete();
 
-                    // Create new questions
-                    foreach ($request->questions as $index => $questionData) {
-                        QuizQuestion::create([
-                            'quiz_id'       => $quiz->id,
-                            'question'      => $questionData['question'],
-                            'options'       => $questionData['options'] ?? [],
-                            'correct_answer'=> $questionData['correct_answer'],
-                            'points'        => $questionData['points'] ?? 10,
-                            'order_number'  => $index + 1,
-                        ]);
-                    }
+                // Create new questions
+                foreach ($questions as $index => $questionData) {
+                    QuizQuestion::create([
+                        'quiz_id'       => $quiz->id,
+                        'question'      => $questionData['question'],
+                        'options'       => $questionData['options'] ?? [],
+                        'correct_answer'=> $questionData['correct_answer'],
+                        'points'        => $questionData['points'] ?? 10,
+                        'order_number'  => $index + 1,
+                    ]);
                 }
             });
 
-            return redirect()->route('instructor.quiz-manage')->with('success', 'Quiz berhasil diupdate.');
+            return redirect()->route('instructor.quiz.index')->with('success', 'Quiz berhasil diupdate.');
         } catch (\Exception $e) {
             Log::error('Error updating quiz: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Terjadi kesalahan saat mengupdate quiz.');
+            return redirect()->back()->with('error', 'Terjadi kesalahan saat mengupdate quiz: ' . $e->getMessage());
         }
     }
 
@@ -174,7 +199,7 @@ class QuizController extends Controller
                 $quiz->delete();
             });
 
-            return redirect()->route('instructor.quiz-manage')->with('success', 'Quiz berhasil dihapus.');
+            return redirect()->route('instructor.quiz.index')->with('success', 'Quiz berhasil dihapus.');
         } catch (\Exception $e) {
             Log::error('Error deleting quiz: ' . $e->getMessage());
             return redirect()->back()->with('error', 'Terjadi kesalahan saat menghapus quiz.');
@@ -187,37 +212,43 @@ class QuizController extends Controller
             $quiz->update(['is_active' => !$quiz->is_active]);
             $status = $quiz->is_active ? 'diaktifkan' : 'dinonaktifkan';
 
-            return redirect()->route('instructor.quiz-manage')->with('success', "Quiz berhasil {$status}.");
+            return redirect()->route('instructor.quiz.index')->with('success', "Quiz berhasil {$status}.");
         } catch (\Exception $e) {
             Log::error('Error toggling quiz status: ' . $e->getMessage());
             return redirect()->back()->with('error', 'Terjadi kesalahan saat mengubah status quiz.');
         }
     }
 
-    public function results()
+    public function results(Request $request)
     {
         try {
-            $results = QuizAttempt::with(['user', 'quiz.module'])
-                ->orderBy('completed_at', 'desc')
-                ->get()
-                ->map(fn ($a) => [
-                    'id'             => $a->id,
-                    'studentName'    => $a->user->name ?? 'Unknown',
-                    'nim'            => $a->user->nim ?? 'Unknown',
-                    'quizTitle'      => $a->quiz->title ?? 'Unknown Quiz',
-                    'moduleTitle'    => $a->quiz->module->title ?? 'Unknown Module',
-                    'score'          => $a->quiz->total_questions > 0
-                                        ? round(($a->score / $a->quiz->total_questions) * 100)
-                                        : 0,
-                    'rawScore'       => $a->score,
-                    'totalQuestions' => $a->quiz->total_questions,
-                    'pointsEarned'   => $a->points_earned ?? 0,
-                    'completedAt'    => $a->completed_at ? $a->completed_at->format('Y-m-d H:i:s') : null,
-                    'timeSpent'      => $this->calculateTimeSpent($a),
-                    'attempts'       => QuizAttempt::where('user_id', $a->user_id)
-                                                  ->where('quiz_id', $a->quiz_id)
-                                                  ->count(),
-                ]);
+            $query = QuizAttempt::with(['user', 'quiz.module'])
+                ->orderBy('completed_at', 'desc');
+
+            // Filter by quiz_id if provided
+            if ($request->has('quiz_id')) {
+                $query->where('quiz_id', $request->quiz_id);
+            }
+
+            $results = $query->get()->map(fn ($a) => [
+                'id'             => $a->id,
+                'studentName'    => $a->user->name ?? 'Unknown',
+                'nim'            => $a->user->nim ?? 'Unknown',
+                'quizId'         => $a->quiz_id,
+                'quizTitle'      => $a->quiz->title ?? 'Unknown Quiz',
+                'moduleTitle'    => $a->quiz->module->title ?? 'Unknown Module',
+                'score'          => $a->quiz->total_questions > 0
+                                    ? round(($a->score / $a->quiz->total_questions) * 100)
+                                    : 0,
+                'rawScore'       => $a->score,
+                'totalQuestions' => $a->quiz->total_questions,
+                'pointsEarned'   => $a->points_earned ?? 0,
+                'completedAt'    => $a->completed_at ? $a->completed_at->format('Y-m-d H:i:s') : null,
+                'timeSpent'      => $this->calculateTimeSpent($a),
+                'attempts'       => QuizAttempt::where('user_id', $a->user_id)
+                                              ->where('quiz_id', $a->quiz_id)
+                                              ->count(),
+            ]);
 
             return response()->json(['results' => $results]);
         } catch (\Exception $e) {
@@ -313,12 +344,11 @@ class QuizController extends Controller
 
     private function calculateTimeSpent($attempt)
     {
-        // Implement actual time calculation based on started_at and completed_at
         if ($attempt->started_at && $attempt->completed_at) {
             $diff = $attempt->completed_at->diffInMinutes($attempt->started_at);
             return $diff;
         }
-        return rand(15, 30); // placeholder
+        return 0;
     }
 
     private function calculateDifficultyRating($attempts, $totalQuestions)
