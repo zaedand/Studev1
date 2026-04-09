@@ -1,0 +1,19 @@
+.flipbook-container {
+    margin: 0 auto;
+}
+
+.demoPage {
+    width: 100%;
+    height: 100%;
+}
+
+.page {
+    background: white;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+.demoPage img,
+.page img {
+    user-select: none;
+    pointer-events: none;
+}

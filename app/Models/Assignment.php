@@ -13,7 +13,8 @@ class Assignment extends Model
         'module_id',
         'title',
         'description',
-        'deadline', // Default deadline (optional, for backward compatibility)
+        'tasks',               // ← kolom JSON daftar tugas praktikum
+        'deadline',
         'point_reward_early',
         'point_reward_ontime',
         'point_reward_late',
@@ -23,12 +24,14 @@ class Assignment extends Model
     protected function casts(): array
     {
         return [
-            'deadline' => 'datetime',
+            'tasks'     => 'array',    // ← cast otomatis JSON ↔ PHP array
+            'deadline'  => 'datetime',
             'is_active' => 'boolean',
         ];
     }
 
-    // Relationships
+    // ── Relasi ────────────────────────────────────────────────────────────────
+
     public function module()
     {
         return $this->belongsTo(Module::class);
@@ -39,16 +42,16 @@ class Assignment extends Model
         return $this->hasMany(AssignmentSubmission::class);
     }
 
-    /**
-     * Classes with their specific deadlines
-     */
     public function classDeadlines()
     {
         return $this->hasMany(AssignmentClassDeadline::class);
     }
 
+    // ── Pembantu Deadline ─────────────────────────────────────────────────────
+
     /**
-     * Get deadline for specific class
+     * Ambil deadline untuk kelas tertentu.
+     * Jika tidak ada deadline kelas, gunakan deadline default.
      */
     public function getDeadlineForClass($classId)
     {
@@ -60,22 +63,22 @@ class Assignment extends Model
     }
 
     /**
-     * Get deadline for student (based on their class)
+     * Ambil deadline untuk mahasiswa berdasarkan kelasnya.
      */
     public function getDeadlineForStudent($studentId)
     {
         $student = \App\Models\User::with('classes')->find($studentId);
 
         if (!$student || $student->classes->isEmpty()) {
-            return $this->deadline; // Default deadline
+            return $this->deadline;
         }
 
-        // Get first class deadline (assuming student is in one class per course)
         $classId = $student->classes->first()->id;
         return $this->getDeadlineForClass($classId);
     }
 
-    // Scopes
+    // ── Scope ─────────────────────────────────────────────────────────────────
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);

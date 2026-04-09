@@ -14,11 +14,12 @@ use App\Http\Controllers\CompilerController;
 use App\Http\Controllers\Instructor\InstructorDashboardController;
 use App\Http\Controllers\Instructor\ModuleController as InstructorModuleController;
 use App\Http\Controllers\Instructor\QuizController as InstructorQuizController;
+use App\Http\Controllers\ManualBookController;
 use Inertia\Inertia;
 
 /*
 |--------------------------------------------------------------------------
-| Public Routes
+| Rute Publik
 |--------------------------------------------------------------------------
 */
 Route::get('/', function () {
@@ -27,80 +28,70 @@ Route::get('/', function () {
 
 /*
 |--------------------------------------------------------------------------
-| Authenticated Routes (All Roles)
+| Rute Terautentikasi (Semua Peran)
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth', 'verified'])->group(function () {
-    // Dashboard - redirect based on role
-    Route::get('/dashboard', [DashboardController::class, 'index'])
-        ->name('dashboard');
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-
-    // Compiler - accessible to all authenticated users
     Route::get('/compiler', function () {
         return Inertia::render('compiler');
     })->name('compiler');
 
-    // Leaderboard - accessible to all authenticated users
-    Route::get('/leaderboard', [LeaderboardController::class, 'index'])
-        ->name('leaderboard');
+    Route::get('/leaderboard', [LeaderboardController::class, 'index'])->name('leaderboard');
 });
 
 /*
 |--------------------------------------------------------------------------
-| Student Routes
+| Rute Mahasiswa
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth', 'role:student'])->group(function () {
 
-    // Module Detail
+    // Detail Modul
     Route::get('/module/{module}', [ModuleController::class, 'show'])
-        ->name('module.show');
+        ->name('module.show')
+        ->middleware('check.module.access');
 
-    // CPMK Routes
+    // CPMK
     Route::post('/modules/{moduleId}/cpmk/complete', [CpmkController::class, 'markCompleted'])
         ->name('cpmk.complete');
 
-    // Learning Objectives Routes
+    // Tujuan Pembelajaran
     Route::post('/modules/{moduleId}/learning-objective/complete', [LearningObjectiveController::class, 'markCompleted'])
         ->name('learning-objective.complete');
 
-    // Material Routes
+    // Materi
     Route::prefix('materials')->name('materials.')->group(function () {
-        Route::get('/{material}', [MaterialController::class, 'show'])
-            ->name('show');
-        Route::post('/{material}/complete', [MaterialController::class, 'markCompleted'])
-            ->name('complete');
-        Route::get('/{material}/download', [MaterialController::class, 'download'])
-            ->name('download');
+        Route::get('/{material}', [MaterialController::class, 'show'])->name('show');
+        Route::get('/modules/material/{id}/preview', [ModuleController::class, 'preview'])->name('material.preview');
+        Route::post('/materials/{material}/complete', [MaterialController::class, 'complete'])->name('materials.complete');
+        Route::post('/{material}/complete', [MaterialController::class, 'markCompleted'])->name('complete');
+        Route::get('/{material}/download', [MaterialController::class, 'download'])->name('download');
     });
 
-    // Enrichment Routes
+    // Pengayaan
     Route::prefix('enrichments')->name('enrichments.')->group(function () {
-        Route::get('/{enrichment}', [EnrichmentController::class, 'show'])
-            ->name('show');
-        Route::post('/{enrichment}/complete', [EnrichmentController::class, 'markCompleted'])
-            ->name('complete');
+        Route::get('/{enrichment}', [EnrichmentController::class, 'show'])->name('show');
+        Route::post('/{enrichment}/complete', [EnrichmentController::class, 'markCompleted'])->name('complete');
     });
 
-    // Quiz Routes
+    // Kuis
     Route::prefix('module/{moduleId}/quiz')->name('quiz.')->group(function () {
-        Route::get('/', [QuizController::class, 'show'])
-            ->name('show');
-        Route::post('/start', [QuizController::class, 'start'])
-            ->name('start');
-        Route::post('/submit', [QuizController::class, 'submit'])
-            ->name('submit');
-        Route::get('/result', [QuizController::class, 'result'])
-            ->name('result');
+        Route::get('/', [QuizController::class, 'show'])->name('show');
+        Route::post('/start', [QuizController::class, 'start'])->name('start');
+        Route::post('/submit', [QuizController::class, 'submit'])->name('submit');
+        Route::get('/result', [QuizController::class, 'result'])->name('result');
     });
 
-    // Assignment Routes
+    // Tugas / Praktikum (Mahasiswa)
     Route::prefix('assignments')->name('assignments.')->group(function () {
-        Route::get('/{assignment}', [AssignmentController::class, 'show'])
-            ->name('show');
-        Route::post('/{assignment}/submit', [AssignmentController::class, 'submit'])
-            ->name('submit');
+        Route::get('/{assignment}', [AssignmentController::class, 'show'])->name('show');
+        Route::post('/{assignment}/submit', [AssignmentController::class, 'submit'])->name('submit');
+
+        // ★ Unduh template laporan praktikum untuk mahasiswa
+        Route::get('/template/download', [AssignmentController::class, 'downloadTemplate'])
+            ->name('template.download');
     });
 
     Route::post('/assignments/{assignment}/resubmit', [AssignmentController::class, 'resubmit'])
@@ -108,19 +99,23 @@ Route::middleware(['auth', 'role:student'])->group(function () {
     Route::delete('/assignments/{assignment}/submission', [AssignmentController::class, 'deleteSubmission'])
         ->name('assignments.delete');
 
- 
-
-    // Assignment Submission Download
+    // Unduh Pengumpulan
     Route::get('/assignment-submissions/{submission}/download', [AssignmentController::class, 'download'])
         ->name('assignment-submissions.download');
+
+    // Buku Panduan
+    Route::prefix('manual-book')->name('manualbook.')->group(function () {
+        Route::get('/', [ManualBookController::class, 'index'])->name('index');
+        Route::get('/download', [ManualBookController::class, 'download'])->name('download');
+        Route::get('/view', [ManualBookController::class, 'view'])->name('view');
+    });
 });
 
 /*
 |--------------------------------------------------------------------------
-| Instructor Routes
+| Rute Instruktur / Dosen
 |--------------------------------------------------------------------------
 */
-
 use App\Http\Controllers\Instructor\ModuleComponentController;
 use App\Http\Controllers\Instructor\ClassRoomController;
 use App\Http\Controllers\Instructor\PraktikumController;
@@ -130,156 +125,126 @@ Route::middleware(['auth', 'role:instructor'])
     ->name('instructor.')
     ->group(function () {
 
-    // Dashboard
-    Route::get('/dashboard', [InstructorDashboardController::class, 'index'])
-        ->name('dashboard');
+    Route::get('/dashboard', [InstructorDashboardController::class, 'index'])->name('dashboard');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Module Management
-    |--------------------------------------------------------------------------
-    */
+    // ── Manajemen Modul ──────────────────────────────────────────────────────
     Route::prefix('modules')->name('modules.')->group(function () {
-
         Route::get('/', [InstructorModuleController::class, 'index'])->name('index');
         Route::get('/create', [InstructorModuleController::class, 'create'])->name('create');
         Route::get('/{id}/edit', [InstructorModuleController::class, 'edit'])->name('edit');
-
         Route::post('/', [InstructorModuleController::class, 'store'])->name('store');
         Route::put('/{id}', [InstructorModuleController::class, 'update'])->name('update');
         Route::delete('/{id}', [InstructorModuleController::class, 'destroy'])->name('destroy');
-
         Route::get('/{id}', [InstructorModuleController::class, 'show'])->name('show');
-
-        // Extra
-        Route::post('/{id}/toggle-active', [InstructorModuleController::class, 'toggleActive'])
-            ->name('toggle-active');
-        Route::post('/reorder', [InstructorModuleController::class, 'reorder'])
-            ->name('reorder');
+        Route::post('/{id}/toggle-active', [InstructorModuleController::class, 'toggleActive'])->name('toggle-active');
+        Route::post('/reorder', [InstructorModuleController::class, 'reorder'])->name('reorder');
     });
 
-    /*
-    |--------------------------------------------------------------------------
-    | Module Components (CPMK / Learning Objectives / Material / Enrichment)
-    |--------------------------------------------------------------------------
-    */
+    // ── Komponen Modul ───────────────────────────────────────────────────────
     Route::prefix('modules/{module}')->name('modules.')->group(function () {
-
-        // CPMK
         Route::post('/cpmk', [ModuleComponentController::class, 'storeCpmk'])->name('cpmk.store');
         Route::put('/cpmk/{cpmk}', [ModuleComponentController::class, 'updateCpmk'])->name('cpmk.update');
         Route::delete('/cpmk/{cpmk}', [ModuleComponentController::class, 'destroyCpmk'])->name('cpmk.destroy');
 
-        // Learning Objectives
         Route::post('/learning-objective', [ModuleComponentController::class, 'storeLearningObjective'])->name('learning-objective.store');
         Route::put('/learning-objective/{objective}', [ModuleComponentController::class, 'updateLearningObjective'])->name('learning-objective.update');
         Route::delete('/learning-objective/{objective}', [ModuleComponentController::class, 'destroyLearningObjective'])->name('learning-objective.destroy');
 
-        // Material
         Route::post('/material', [ModuleComponentController::class, 'storeMaterial'])->name('material.store');
         Route::put('/material/{material}', [ModuleComponentController::class, 'updateMaterial'])->name('material.update');
         Route::delete('/material/{material}', [ModuleComponentController::class, 'destroyMaterial'])->name('material.destroy');
 
-        // Enrichment
         Route::post('/enrichment', [ModuleComponentController::class, 'storeEnrichment'])->name('enrichment.store');
         Route::put('/enrichment/{enrichment}', [ModuleComponentController::class, 'updateEnrichment'])->name('enrichment.update');
         Route::delete('/enrichment/{enrichment}', [ModuleComponentController::class, 'destroyEnrichment'])->name('enrichment.destroy');
     });
 
-    /*
-    |--------------------------------------------------------------------------
-    | Class Management
-    |--------------------------------------------------------------------------
-    */
+    // ── Manajemen Kelas ──────────────────────────────────────────────────────
     Route::prefix('classes')->name('classes.')->group(function () {
-        // List all classes
         Route::get('/', [ClassRoomController::class, 'index'])->name('index');
-
-        // Create class
         Route::get('/create', [ClassRoomController::class, 'create'])->name('create');
         Route::post('/', [ClassRoomController::class, 'store'])->name('store');
-
-        // Show class details
         Route::get('/{id}', [ClassRoomController::class, 'show'])->name('show');
-
-        // Edit class
         Route::get('/{id}/edit', [ClassRoomController::class, 'edit'])->name('edit');
         Route::put('/{id}', [ClassRoomController::class, 'update'])->name('update');
-
-        // Delete class
         Route::delete('/{id}', [ClassRoomController::class, 'destroy'])->name('destroy');
-
-        // Toggle active status
         Route::post('/{id}/toggle-active', [ClassRoomController::class, 'toggleActive'])->name('toggle-active');
-
-        // Student management in class
         Route::post('/{id}/students', [ClassRoomController::class, 'addStudent'])->name('add-student');
         Route::delete('/{classId}/students/{studentId}', [ClassRoomController::class, 'removeStudent'])->name('remove-student');
         Route::get('/{id}/available-students', [ClassRoomController::class, 'availableStudents'])->name('available-students');
     });
 
-    /*
-    |--------------------------------------------------------------------------
-    | Praktikum
-    |--------------------------------------------------------------------------
-    */
+    // ── Praktikum ────────────────────────────────────────────────────────────
     Route::prefix('praktikum')->name('praktikum.')->group(function () {
-        // Main praktikum management page
-        Route::get('/', [PraktikumController::class, 'index'])
-            ->name('index');
+        Route::get('/', [PraktikumController::class, 'index'])->name('index');
+        Route::post('/', [PraktikumController::class, 'store'])->name('store');
+        Route::put('/{id}', [PraktikumController::class, 'update'])->name('update');
+        Route::delete('/{id}', [PraktikumController::class, 'destroy'])->name('destroy');
 
-        // Assignment CRUD
-        Route::post('/', [PraktikumController::class, 'store'])
-            ->name('store');
-        Route::put('/{id}', [PraktikumController::class, 'update'])
-            ->name('update');
-        Route::delete('/{id}', [PraktikumController::class, 'destroy'])
-            ->name('destroy');
+        // Pengumpulan
+        Route::get('/submissions/{id}/preview', [PraktikumController::class, 'previewSubmission'])->name('submissions.preview');
+        Route::get('/submissions', [PraktikumController::class, 'submissions'])->name('submissions');
+        Route::post('/submissions/{id}/grade', [PraktikumController::class, 'gradeSubmission'])->name('submissions.grade');
+        Route::get('/submissions/{id}/download', [PraktikumController::class, 'downloadSubmission'])->name('submissions.download');
 
-        // Submissions
-        Route::get('/submissions/{id}/preview', [PraktikumController::class, 'previewSubmission'])
-            ->name('submissions.preview');
-        Route::get('/submissions', [PraktikumController::class, 'submissions'])
-            ->name('submissions');
-        Route::post('/submissions/{id}/grade', [PraktikumController::class, 'gradeSubmission'])
-            ->name('submissions.grade');
-        Route::get('/submissions/{id}/download', [PraktikumController::class, 'downloadSubmission'])
-            ->name('submissions.download');
+        // ★ Unduh template laporan (untuk dosen — agar bisa dibagikan ke mahasiswa)
+        Route::get('/template/download', [PraktikumController::class, 'downloadTemplate'])->name('template.download');
 
-        // Analytics
-        Route::get('/analytics', [PraktikumController::class, 'analytics'])
-            ->name('analytics');
+        // Analitik
+        Route::get('/analytics', [PraktikumController::class, 'analytics'])->name('analytics');
     });
 
-    /*
-    |--------------------------------------------------------------------------
-    | Quiz Management
-    |--------------------------------------------------------------------------
-    */
+    // ── Manajemen Kuis ───────────────────────────────────────────────────────
     Route::prefix('quiz')->name('quiz.')->group(function () {
-
         Route::get('/results/data', [InstructorQuizController::class, 'results'])->name('results');
         Route::get('/analytics/data', [InstructorQuizController::class, 'analytics'])->name('analytics');
-
         Route::get('/', [InstructorQuizController::class, 'index'])->name('index');
         Route::post('/', [InstructorQuizController::class, 'store'])->name('store');
         Route::get('/{quiz}', [InstructorQuizController::class, 'show'])->name('show');
         Route::put('/{quiz}', [InstructorQuizController::class, 'update'])->name('update');
         Route::delete('/{quiz}', [InstructorQuizController::class, 'destroy'])->name('destroy');
-
         Route::patch('/{quiz}/toggle-status', [InstructorQuizController::class, 'toggleStatus'])->name('toggle-status');
         Route::get('/result/{attempt}', [InstructorQuizController::class, 'resultDetail'])->name('result-detail');
     });
+
+    // Buku Panduan
+    Route::get('/manual-book', [ManualBookController::class, 'instructor'])->name('manualbook.index');
+    Route::get('/manual-book/download', [ManualBookController::class, 'downloadInstructor'])->name('manualbook.download');
+    Route::get('/manual-book/view', [ManualBookController::class, 'viewInstructor'])->name('manualbook.view');
 });
 
 
+use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\UserManagementController;
+
 /*
 |--------------------------------------------------------------------------
-| API Routes (No CSRF, accessible to authenticated users)
+| Rute Admin
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth', 'role:admin'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+
+    // Dasbor
+    Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
+
+    // Manajemen Pengguna
+    Route::prefix('pengguna')->name('user')->group(function () {
+        Route::get('/', [UserManagementController::class, 'index'])->name('index');
+        Route::get('/{user}', [UserManagementController::class, 'tampil'])->name('tampil');
+        Route::patch('/{user}/ubah-peran', [UserManagementController::class, 'ubahPeran'])->name('ubah-peran');
+        Route::delete('/{user}', [UserManagementController::class, 'hapus'])->name('hapus');
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| Rute API (Tanpa CSRF, Terautentikasi)
 |--------------------------------------------------------------------------
 */
 Route::prefix('api')->middleware('auth')->group(function () {
-    // Compiler API
     Route::prefix('compiler')->group(function () {
         Route::post('/execute', [CompilerController::class, 'executeCode']);
         Route::post('/execute-judge0', [CompilerController::class, 'executeCodeJudge0']);
@@ -288,10 +253,5 @@ Route::prefix('api')->middleware('auth')->group(function () {
     });
 });
 
-/*
-|--------------------------------------------------------------------------
-| Additional Route Files
-|--------------------------------------------------------------------------
-*/
-require __DIR__.'/settings.php';
-require __DIR__.'/auth.php';
+require __DIR__ . '/settings.php';
+require __DIR__ . '/auth.php';

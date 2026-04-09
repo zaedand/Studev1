@@ -62,70 +62,79 @@ class ModuleController extends Controller
      * Show module details with all components
      */
     public function show($id)
-    {
-        $module = Module::with([
-            'materials',
-            'enrichments' => function($query) {
-                $query->where('is_active', true);
-            },
-            'quizzes',
-            'assignments',
-            'cpmks',
-            'learningObjectives'
-        ])->findOrFail($id);
+{
+    $module = Module::with([
+        'materials',
+        'enrichments' => function($query) {
+            $query->where('is_active', true);
+        },
+        'quizzes',
+        'assignments',
+        'cpmks',
+        'learningObjectives'
+    ])->findOrFail($id);
 
-        // Calculate statistics
-        $totalStudents = \App\Models\User::where('role', 'student')->count();
-        $completedCount = $this->getModuleCompletionCount($id);
+    // Calculate statistics
+    $totalStudents = \App\Models\User::where('role', 'student')->count();
+    $completedCount = $this->getModuleCompletionCount($id);
 
-        // Get student progress summary
-        $studentProgress = $this->getStudentProgressSummary($id);
+    // Get student progress summary
+    $studentProgress = $this->getStudentProgressSummary($id);
 
-        return Inertia::render('Instructor/Modules/Detail', [
-            'module' => [
-                'id' => $module->id,
-                'title' => $module->title,
-                'description' => $module->description,
-                'order_number' => $module->order_number,
-                'cp_atp' => $module->cp_atp,
-                'is_active' => $module->is_active,
-                'created_at' => $module->created_at->format('d M Y'),
-                'updated_at' => $module->updated_at->format('d M Y'),
-            ],
-            'cpmks' => $module->cpmks->map(function($cpmk) {
-                return [
-                    'id' => $cpmk->id,
-                    'content' => $cpmk->content,
-                    'point_reward' => $cpmk->point_reward,
-                ];
-            }),
-            'learningObjectives' => $module->learningObjectives->map(function($obj) {
-                return [
-                    'id' => $obj->id,
-                    'content' => $obj->content,
-                    'point_reward' => $obj->point_reward,
-                ];
-            }),
-            'materials' => $module->materials,
-            'enrichments' => $module->enrichments,
-            'quizzes' => $module->quizzes,
-            'assignments' => $module->assignments,
-            'statistics' => [
-                'total_students' => $totalStudents,
-                'completed_students' => $completedCount,
-                'completion_rate' => $totalStudents > 0
-                    ? round(($completedCount / $totalStudents) * 100)
-                    : 0,
-                'total_components' => $module->cpmks->count() +
-                    $module->learningObjectives->count() +
-                    $module->materials->count() +
-                    $module->enrichments->count() +
-                    $module->quizzes->count() +
-                    $module->assignments->count(),
-            ],
-            'studentProgress' => $studentProgress,
-        ]);
-    }
+    // 🔥 Hitung total komponen di sini
+    $total_components = collect([
+        $module->cpmks->count(),
+        $module->learningObjectives->count(),
+        $module->materials->count(),
+        $module->enrichments->count(),
+        $module->quizzes->count(),
+        $module->assignments->count(),
+    ])->sum();
+
+    return Inertia::render('Instructor/Modules/Detail', [
+        'module' => [
+            'id' => $module->id,
+            'title' => $module->title,
+            'description' => $module->description,
+            'order_number' => $module->order_number,
+            'cp_atp' => $module->cp_atp,
+            'is_active' => $module->is_active,
+            'created_at' => $module->created_at->format('d M Y'),
+            'updated_at' => $module->updated_at->format('d M Y'),
+        ],
+        'cpmks' => $module->cpmks->map(function($cpmk) {
+            return [
+                'id' => $cpmk->id,
+                'content' => $cpmk->content,
+                'point_reward' => $cpmk->point_reward,
+            ];
+        }),
+        'learningObjectives' => $module->learningObjectives->map(function($obj) {
+            return [
+                'id' => $obj->id,
+                'content' => $obj->content,
+                'point_reward' => $obj->point_reward,
+            ];
+        }),
+        'materials' => $module->materials,
+        'enrichments' => $module->enrichments,
+        'quizzes' => $module->quizzes,
+        'assignments' => $module->assignments,
+
+        'statistics' => [
+            'total_students' => $totalStudents,
+            'completed_students' => $completedCount,
+            'completion_rate' => $totalStudents > 0
+                ? round(($completedCount / $totalStudents) * 100)
+                : 0,
+            // ⬇ Ini fix angka 11311 jadi = 7, dst
+            'total_components' => $total_components,
+        ],
+
+        'studentProgress' => $studentProgress,
+    ]);
+}
+
 
     /**
      * Show the form for creating a new module

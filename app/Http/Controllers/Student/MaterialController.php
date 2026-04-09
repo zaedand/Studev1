@@ -49,6 +49,99 @@ class MaterialController extends Controller
     /**
      * Mark material as completed and award points
      */
+    /**
+ * Mark material as completed with reflection
+ */
+public function complete(Request $request, $materialId)
+{
+    $validated = $request->validate([
+        'reflection' => 'nullable|string|min:50',
+        'quiz_answers' => 'nullable|array',
+        'pages_read' => 'nullable|array'
+    ]);
+
+    $user = Auth::user();
+    $material = Material::findOrFail($materialId);
+
+    // Check if already completed
+    $progress = UserProgress::where('user_id', $user->id)
+        ->where('progressable_type', Material::class)
+        ->where('progressable_id', $material->id)
+        ->first();
+
+    if ($progress && $progress->is_completed) {
+        return back()->with([
+            'flash' => [
+                'info' => true,
+                'message' => 'Materi sudah diselesaikan sebelumnya',
+                'total_points' => $user->point_fire
+            ]
+        ]);
+    }
+
+    DB::beginTransaction();
+
+    try {
+        $points = $material->point_reward;
+
+        // Create or update progress with reflection
+        $progress = UserProgress::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'progressable_type' => Material::class,
+                'progressable_id' => $material->id,
+            ],
+            [
+                'is_completed' => true,
+                'points_earned' => $points,
+                'completed_at' => now(),
+                'progress_percentage' => 100,
+                'metadata' => json_encode([
+                    'reflection' => $validated['reflection'] ?? null,
+                    'quiz_answers' => $validated['quiz_answers'] ?? [],
+                    'pages_read' => $validated['pages_read'] ?? [],
+                    'completed_at' => now()->toDateTimeString()
+                ])
+            ]
+        );
+
+        // Award points (gunakan point_fire, bukan points)
+        $user->increment('point_fire', $points);
+
+        DB::commit();
+
+        Log::info('Material completed with reflection', [
+            'user_id' => $user->id,
+            'material_id' => $material->id,
+            'points_earned' => $points,
+            'reflection_length' => strlen($validated['reflection'] ?? '')
+        ]);
+
+        return back()->with([
+            'flash' => [
+                'success' => true,
+                'message' => "Selamat! Materi selesai. Anda mendapat {$points} poin 🔥",
+                'total_points' => $user->fresh()->point_fire
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+
+        Log::error('Material completion error', [
+            'user_id' => $user->id,
+            'material_id' => $material->id,
+            'error' => $e->getMessage()
+        ]);
+
+        return back()->with([
+            'flash' => [
+                'error' => true,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ]
+        ]);
+    }
+}
     public function markCompleted($materialId)
     {
         $user = Auth::user();

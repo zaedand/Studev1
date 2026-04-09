@@ -19,7 +19,23 @@ export default defineConfig({
     },
     resolve: {
         alias: {
+            '@': resolve(__dirname, 'resources/js'),
             'ziggy-js': resolve(__dirname, 'vendor/tightenco/ziggy'),
         },
     },
+    build: {
+        manifest: true,
+        outDir: 'public/build',
+        emptyOutDir: true,
+        chunkSizeWarningLimit: 2000,
+    },
+    server: {
+    host: '0.0.0.0',
+    port: 5173,
+    strictPort: true,
+    hmr: {
+        host: '192.168.0.104'
+    }
+}
+
 });

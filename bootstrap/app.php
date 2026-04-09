@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'role' => \App\Http\Middleware\RoleMiddleware::class,
+            'check.module.access' => \App\Http\Middleware\CheckModuleAccess::class,
         ]);
 
         $middleware->web(append: [

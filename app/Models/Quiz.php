@@ -12,6 +12,7 @@ class Quiz extends Model
     protected $fillable = [
         'module_id',
         'title',
+        'time_limit',
         'description',
         'total_questions',
         'point_per_question',

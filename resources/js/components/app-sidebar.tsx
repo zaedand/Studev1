@@ -3,30 +3,61 @@ import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
-import { Link } from '@inertiajs/react';
-import { BookOpen, Code, FilePenLine, Folder, GraduationCap, House, LayoutGrid, Trophy } from 'lucide-react';
+import { Link, usePage } from '@inertiajs/react';
+import {
+    BookOpen,
+    Code,
+    FilePenLine,
+    GraduationCap,
+    House,
+    LayoutDashboard,
+    Trophy,
+    Users,
+    BookMarked,
+    ShieldCheck,
+} from 'lucide-react';
 import AppLogo from './app-logo';
 
-const mainNavItems: NavItem[] = [
+// Navigasi Mahasiswa
+const navMahasiswa: NavItem[] = [
     {
-        title: 'Dashboard',
+        title: 'Dasbor',
         href: '/dashboard',
         icon: House,
     },
     {
-        title: 'Instructor',
-        href: '/instructor/dashboard',
-        icon: GraduationCap,
-    },
-    {
-        title: 'Leaderboard',
+        title: 'Papan Peringkat',
         href: '/leaderboard',
         icon: Trophy,
     },
     {
-        title: 'Compiler',
+        title: 'Kompiler',
         href: '/compiler',
         icon: Code,
+    },
+    {
+        title: 'Buku Panduan',
+        href: '/manual-book',
+        icon: BookMarked,
+    },
+];
+
+// Navigasi Dosen
+const navDosen: NavItem[] = [
+    {
+        title: 'Dashboard',
+        href: '/instructor/dashboard',
+        icon: LayoutDashboard,
+    },
+    {
+        title: 'Modul',
+        href: '/instructor/modules',
+        icon: BookMarked,
+    },
+    {
+        title: 'Kelas',
+        href: '/instructor/classes',
+        icon: Users,
     },
     {
         title: 'Quiz',
@@ -36,32 +67,62 @@ const mainNavItems: NavItem[] = [
     {
         title: 'Praktikum',
         href: '/instructor/praktikum',
-        icon: FilePenLine,
+        icon: GraduationCap,
+    },
+    {
+        title: 'Leaderboard',
+        href: '/leaderboard',
+        icon: Trophy,
+    },
+    {
+        title: 'Kompiler',
+        href: '/compiler',
+        icon: Code,
+    },
+    {
+        title: 'Buku Panduan',
+        href: '/instructor/manual-book',
+        icon: BookMarked,
     },
 ];
 
-const footerNavItems: NavItem[] = [
-
+// Navigasi Admin
+const navAdmin: NavItem[] = [
     {
-        title: 'Repository',
-        href: 'https://github.com/laravel/react-starter-kit',
-        icon: Folder,
+        title: 'Dashboard',
+        href: '/admin/dashboard',
+        icon: ShieldCheck,
     },
     {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#react',
-        icon: BookOpen,
+        title: 'Users',
+        href: '/admin/pengguna',
+        icon: Users,
     },
 ];
+
+const navTambahan: NavItem[] = [];
 
 export function AppSidebar() {
+    const props = usePage().props as Partial<{ auth: { user: { role: string } } }>;
+    const peran = props.auth?.user?.role ?? 'student';
+
+    const navUtama =
+        peran === 'admin'      ? navAdmin  :
+        peran === 'instructor' ? navDosen  :
+        navMahasiswa;
+
+    const tautanDasbor =
+        peran === 'admin'      ? '/admin/dasbor'         :
+        peran === 'instructor' ? '/instructor/dashboard' :
+        '/dashboard';
+
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild>
-                            <Link href="/dashboard" prefetch>
+                            <Link href={tautanDasbor} prefetch>
                                 <AppLogo />
                             </Link>
                         </SidebarMenuButton>
@@ -70,11 +131,11 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain items={navUtama} />
             </SidebarContent>
 
             <SidebarFooter>
-                <NavFooter items={footerNavItems} className="mt-auto" />
+                <NavFooter items={navTambahan} className="mt-auto" />
                 <NavUser />
             </SidebarFooter>
         </Sidebar>

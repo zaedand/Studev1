@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Student;
 use App\Http\Controllers\Controller;
 use App\Models\Assignment;
 use App\Models\AssignmentSubmission;
+use App\Models\AssignmentClassDeadline;
 use App\Models\UserProgress;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -21,6 +22,23 @@ class AssignmentController extends Controller
     public function show(Assignment $assignment)
     {
         $user = Auth::user();
+
+        // Get user's class
+        $userClass = $user->classes()->first();
+
+        // Get deadline untuk kelas user (prioritas), fallback ke deadline default
+        $classDeadline = null;
+
+        if ($userClass) {
+            $classDeadline = AssignmentClassDeadline::where('assignment_id', $assignment->id)
+                ->where('class_id', $userClass->id)
+                ->first();
+        }
+
+        $deadline = $classDeadline
+            ? $classDeadline->deadline
+            : $assignment->deadline;
+
 
         // Get user submission
         $submission = AssignmentSubmission::where('assignment_id', $assignment->id)
@@ -39,7 +57,9 @@ class AssignmentController extends Controller
             'title' => $assignment->title,
             'description' => $assignment->description,
             'instructions' => $assignment->instructions ?? '',
-            'deadline' => $assignment->deadline->format('Y-m-d H:i:s'),
+            'deadline' => $deadline->format('Y-m-d H:i:s'),
+            'deadline_formatted' => $deadline->format('d M Y H:i'),
+            'has_custom_deadline' => $classDeadline !== null,
             'point_reward_early' => $assignment->point_reward_early,
             'point_reward_ontime' => $assignment->point_reward_ontime,
             'point_reward_late' => $assignment->point_reward_late,
@@ -55,16 +75,59 @@ class AssignmentController extends Controller
                 'submitted_at' => $submission->submitted_at->format('d M Y H:i'),
                 'status' => $submission->status,
                 'points_earned' => $submission->points_earned,
+                'score' => $submission->score,
                 'feedback' => $submission->feedback,
+                'is_graded' => $submission->is_graded,
+                'submission_time_info' => $this->getSubmissionTimeInfo($submission, $deadline),
             ] : null,
             'completed' => $progress ? $progress->is_completed : false,
-            'is_late' => now()->isAfter($assignment->deadline),
-            'days_until_deadline' => now()->diffInDays($assignment->deadline, false),
+            'is_late' => now()->isAfter($deadline),
+            'days_until_deadline' => now()->diffInDays($deadline, false),
         ];
 
         return Inertia::render('Student/Assignments/Show', [
             'assignment' => $assignmentData
         ]);
+    }
+
+    /**
+     * Helper untuk mendapatkan info waktu pengumpulan
+     */
+    private function getSubmissionTimeInfo($submission, $deadline)
+    {
+        $submittedAt = $submission->submitted_at;
+        $days = abs($submittedAt->diffInDays($deadline, false));
+
+        if ($submittedAt->isAfter($deadline)) {
+            return [
+                'status' => 'late',
+                'message' => "Terlambat {$days} hari",
+                'color' => 'red'
+            ];
+        }
+
+        $earlyDeadline = $deadline->copy()->subDays(2);
+        if ($submittedAt->lte($earlyDeadline)) {
+            return [
+                'status' => 'early',
+                'message' => "{$days} hari lebih awal",
+                'color' => 'green'
+            ];
+        }
+
+        if ($days > 0) {
+            return [
+                'status' => 'ontime',
+                'message' => "{$days} hari sebelum deadline",
+                'color' => 'blue'
+            ];
+        }
+
+        return [
+            'status' => 'ontime',
+            'message' => "Tepat waktu",
+            'color' => 'blue'
+        ];
     }
 
     /**
@@ -107,6 +170,22 @@ class AssignmentController extends Controller
         DB::beginTransaction();
 
         try {
+            // Get deadline untuk kelas user
+            $userClass = $user->classes()->first();
+
+            $classDeadline = null;
+
+            if ($userClass) {
+                $classDeadline = AssignmentClassDeadline::where('assignment_id', $assignment->id)
+                    ->where('class_id', $userClass->id)
+                    ->first();
+            }
+
+            $deadline = $classDeadline
+                ? $classDeadline->deadline
+                : $assignment->deadline;
+
+
             // Store file
             $file = $request->file('file');
             $fileName = Str::slug($user->name) . '_' .
@@ -122,7 +201,6 @@ class AssignmentController extends Controller
 
             // Hitung poin berdasarkan waktu pengumpulan
             $submittedAt = now();
-            $deadline = $assignment->deadline;
             $earlyDeadline = $deadline->copy()->subDays(2);
 
             $pointsEarned = 0;
@@ -229,6 +307,16 @@ class AssignmentController extends Controller
             ]);
         }
 
+        // Cek apakah sudah dinilai
+        if ($submission->is_graded) {
+            return back()->with([
+                'flash' => [
+                    'error' => true,
+                    'message' => 'Tidak dapat menghapus submission yang sudah dinilai oleh dosen'
+                ]
+            ]);
+        }
+
         DB::beginTransaction();
 
         try {
@@ -299,6 +387,16 @@ class AssignmentController extends Controller
             ]);
         }
 
+        // Cek apakah sudah dinilai
+        if ($existingSubmission->is_graded) {
+            return back()->with([
+                'flash' => [
+                    'error' => true,
+                    'message' => 'Tidak dapat mengganti file yang sudah dinilai oleh dosen'
+                ]
+            ]);
+        }
+
         // Validate request
         $request->validate([
             'file' => [
@@ -317,6 +415,15 @@ class AssignmentController extends Controller
         DB::beginTransaction();
 
         try {
+            // Get deadline untuk kelas user
+            $userClass = $user->classes()->first();
+
+            $classDeadline = AssignmentClassDeadline::where('assignment_id', $assignment->id)
+                ->where('class_id', $userClass)
+                ->first();
+
+            $deadline = $classDeadline ? $classDeadline->deadline : $assignment->deadline;
+
             // Hapus file lama
             if (Storage::disk('public')->exists($existingSubmission->file_path)) {
                 Storage::disk('public')->delete($existingSubmission->file_path);
@@ -340,7 +447,6 @@ class AssignmentController extends Controller
 
             // Hitung poin berdasarkan waktu pengumpulan BARU
             $submittedAt = now();
-            $deadline = $assignment->deadline;
             $earlyDeadline = $deadline->copy()->subDays(2);
 
             $pointsEarned = 0;
@@ -458,4 +564,22 @@ class AssignmentController extends Controller
             $submission->file_name
         );
     }
+    public function downloadTemplate()
+{
+    $filePath = 'templates/ContohFormatLaporanDPK.docx';
+
+    if (!Storage::disk('public')->exists($filePath)) {
+        return back()->with([
+            'flash' => [
+                'error' => true,
+                'message' => 'Template tidak ditemukan'
+            ]
+        ]);
+    }
+
+    return Storage::disk('public')->download(
+        $filePath,
+        'ContohFormatLaporanDPK.docx'
+    );
+}
 }
